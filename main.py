@@ -58,7 +58,7 @@ def _safe_import(module_name):
 
 
 import wifi
-sincronizar_horario = _safe_import("sincronizar_horario")
+import sincronizar_horario
 luminosidade = _safe_import("luminosidade")
 rega = _safe_import("rega")
 clima = _safe_import("clima")
@@ -142,6 +142,7 @@ def bootstrap():
     # Inicializações essenciais (tolerantes a falha)
     wifi.conectar()
     sincronizar_horario.sincronizar_ntp()
+    sincronizar_horario.imprimir_hora_atual(prefixo="[BOOT]")
 
     registros_sdcard.inicializar_sdcard()
     registros_sdcard.garantir_estrutura_diretorios(["/logs", "/imagens"])
