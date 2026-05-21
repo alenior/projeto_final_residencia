@@ -65,7 +65,7 @@ clima = _safe_import("clima")
 alarme_predadores = _safe_import("alarme_predadores")
 registros_sdcard = _safe_import("registros_sdcard")
 captura_de_imagem = _safe_import("captura_de_imagem")
-envio_e_recebimento_nuvem = _safe_import("envio_e_recebimento_nuvem")
+import envio_e_recebimento_nuvem
 
 
 # -----------------------------------------------------------------------------
