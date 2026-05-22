@@ -1,20 +1,12 @@
 """
 wifi.py - Gerenciamento de conectividade Wi-Fi para ESP32-S3 (MicroPython)
-
-Responsabilidades:
-- Conectar ao Wi-Fi com timeout e tentativas
-- Expor status e propriedades da conexão no serial
-- Reconectar automaticamente quando a conexão cair
 """
 
 import network
 import time
 
-# Ajuste conforme ambiente (ideal: sobrescrever em secrets.py local, não versionado)
-SSID = "Wokwi-GUEST"
-PASSWORD = ""
-
-# Política de conexão/reconexão
+DEFAULT_SSID = "Wokwi-GUEST"
+DEFAULT_PASSWORD = ""
 CONNECT_TIMEOUT_S = 15
 RETRY_DELAY_S = 3
 MAX_RETRIES = 3
@@ -22,6 +14,18 @@ AUTO_RECONNECT_MIN_INTERVAL_MS = 5000
 
 _STA_IF = network.WLAN(network.STA_IF)
 _ultimo_reconnect_ms = 0
+
+
+def _carregar_credenciais_wifi():
+    ssid = DEFAULT_SSID
+    password = DEFAULT_PASSWORD
+    try:
+        secrets = __import__("secrets")
+        ssid = getattr(secrets, "WIFI_SSID", ssid)
+        password = getattr(secrets, "WIFI_PASSWORD", password)
+    except Exception:
+        pass
+    return ssid, password
 
 
 def _agora_ms():
@@ -52,6 +56,7 @@ def _status_text(status_code):
         3: "STAT_NO_AP_FOUND",
         4: "STAT_CONNECT_FAIL",
         5: "STAT_GOT_IP",
+        1010: "STAT_GOT_IP",
     }
     return status_map.get(status_code, "STAT_UNKNOWN({})".format(status_code))
 
@@ -68,18 +73,20 @@ def imprimir_status_rede(prefixo="[WIFI]"):
         _STA_IF.status(),
         _status_text(_STA_IF.status()),
     ))
-    print("{} ssid={} mac={}".format(prefixo, SSID, _mac_address()))
+    ssid, _ = _carregar_credenciais_wifi()
+    print("{} ssid={} mac={}".format(prefixo, ssid, _mac_address()))
     print("{} ip={} mask={} gw={} dns={}".format(
         prefixo, cfg["ip"], cfg["mask"], cfg["gw"], cfg["dns"]
     ))
 
 
 def conectar(ssid=None, senha=None, timeout_s=CONNECT_TIMEOUT_S, tentativas=MAX_RETRIES):
-    ssid = ssid or SSID
-    senha = senha or PASSWORD
+    cfg_ssid, cfg_senha = _carregar_credenciais_wifi()
+    ssid = ssid or cfg_ssid
+    senha = senha if senha is not None else cfg_senha
 
-    if not ssid or ssid == "SEU_SSID":
-        print("[WIFI][WARN] SSID não configurado. Atualize wifi.py ou use conectar(ssid, senha).")
+    if not ssid:
+        print("[WIFI][WARN] SSID não configurado em secrets.py.")
         return False
 
     _STA_IF.active(True)
@@ -97,7 +104,6 @@ def conectar(ssid=None, senha=None, timeout_s=CONNECT_TIMEOUT_S, tentativas=MAX_
             pass
 
         _STA_IF.connect(ssid, senha)
-
         inicio = time.time()
         while (time.time() - inicio) < timeout_s:
             if _STA_IF.isconnected():

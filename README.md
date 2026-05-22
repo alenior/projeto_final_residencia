@@ -63,3 +63,30 @@ Comandos de exemplo:
 - **Relógio não sincronizado**: em alguns cenários TLS pode falhar; garanta NTP antes do MQTT.
 - **Broker/porta trocados**: confirme host do cluster e porta correta (8883 TLS).
 - **Sem CA/certificados quando exigido**: dependendo do firmware MicroPython, pode ser necessário ajustar `ssl_params`.
+
+
+### 7) Secrets e segurança de credenciais
+1. Copie `secrets.py.example` para `secrets.py`.
+2. Preencha Wi-Fi e MQTT no `secrets.py`.
+3. O arquivo `secrets.py` está no `.gitignore` e não será versionado.
+4. Se você já expôs senha em commit/log/chat, rotacione imediatamente no HiveMQ Cloud.
+
+Exemplo de erro `Falha ao inicializar cliente: 5`:
+- Geralmente indica problema de autenticação/ACL no broker (usuário/senha inválidos ou sem permissão no tópico).
+- Confirme usuário/senha em **Access Management** e teste no cliente web do HiveMQ com os mesmos dados.
+
+
+### 8) HiveMQ Cloud não conecta com username/password
+Se o cliente web do HiveMQ não conecta com `esp32s3-estufa-001` / `Naodigo2026`, normalmente o problema é de credencial/ACL:
+
+1. Em **Access Management > Credentials**, confirme se existe exatamente esse usuário.
+2. Se não existir, crie um novo usuário (ex.: `estufa-app`) e senha forte, depois atualize `secrets.py`.
+3. Em **Access Management > Permissions/ACL**, permita tópicos `estufa/#` para esse usuário.
+4. No cliente web, use:
+   - Host: `<seu-cluster>.s1.eu.hivemq.cloud`
+   - Port: `8883`
+   - TLS/SSL: habilitado
+   - Username/Password: o usuário de **Credentials** (não o `device_id`).
+5. Se falhar, rotacione senha e teste novamente.
+
+> Dica: `device_id` identifica o microcontrolador nos tópicos; não é obrigatoriamente o mesmo valor do usuário MQTT.

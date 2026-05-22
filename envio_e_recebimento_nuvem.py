@@ -8,15 +8,52 @@ from umqtt.simple import MQTTClient
 
 import wifi
 
-DEVICE_ID = "esp32s3-estufa-001"
-MQTT_BROKER = "0754d4c62cd348ccaf698cc85aea935b.s1.eu.hivemq.cloud"
-MQTT_PORT = 8883
-MQTT_USER = "esp32s3-estufa-001"
-MQTT_PASSWORD = "Naodigo2026"
-MQTT_KEEPALIVE = 60
-MQTT_SSL = True
-MQTT_SSL_PARAMS = {}
+DEFAULT_DEVICE_ID = "esp32s3-estufa-001"
+DEFAULT_MQTT_BROKER = "broker.hivemq.com"
+DEFAULT_MQTT_PORT = 1883
+DEFAULT_MQTT_USER = ""
+DEFAULT_MQTT_PASSWORD = ""
+DEFAULT_MQTT_KEEPALIVE = 60
+DEFAULT_MQTT_SSL = True
+DEFAULT_MQTT_SSL_PARAMS = {}
 
+
+
+def _carregar_config_mqtt():
+    cfg = {
+        "DEVICE_ID": DEFAULT_DEVICE_ID,
+        "MQTT_BROKER": DEFAULT_MQTT_BROKER,
+        "MQTT_PORT": DEFAULT_MQTT_PORT,
+        "MQTT_USER": DEFAULT_MQTT_USER,
+        "MQTT_PASSWORD": DEFAULT_MQTT_PASSWORD,
+        "MQTT_KEEPALIVE": DEFAULT_MQTT_KEEPALIVE,
+        "MQTT_SSL": DEFAULT_MQTT_SSL,
+        "MQTT_SSL_PARAMS": DEFAULT_MQTT_SSL_PARAMS,
+    }
+    try:
+        secrets = __import__("secrets")
+        cfg["DEVICE_ID"] = getattr(secrets, "MQTT_DEVICE_ID", cfg["DEVICE_ID"])
+        cfg["MQTT_BROKER"] = getattr(secrets, "MQTT_BROKER", cfg["MQTT_BROKER"])
+        cfg["MQTT_PORT"] = getattr(secrets, "MQTT_PORT", cfg["MQTT_PORT"])
+        cfg["MQTT_USER"] = getattr(secrets, "MQTT_USER", cfg["MQTT_USER"])
+        cfg["MQTT_PASSWORD"] = getattr(secrets, "MQTT_PASSWORD", cfg["MQTT_PASSWORD"])
+        cfg["MQTT_KEEPALIVE"] = getattr(secrets, "MQTT_KEEPALIVE", cfg["MQTT_KEEPALIVE"])
+        cfg["MQTT_SSL"] = getattr(secrets, "MQTT_SSL", cfg["MQTT_SSL"])
+        cfg["MQTT_SSL_PARAMS"] = getattr(secrets, "MQTT_SSL_PARAMS", cfg["MQTT_SSL_PARAMS"])
+    except Exception:
+        pass
+    return cfg
+
+
+_CFG = _carregar_config_mqtt()
+DEVICE_ID = _CFG["DEVICE_ID"]
+MQTT_BROKER = _CFG["MQTT_BROKER"]
+MQTT_PORT = _CFG["MQTT_PORT"]
+MQTT_USER = _CFG["MQTT_USER"]
+MQTT_PASSWORD = _CFG["MQTT_PASSWORD"]
+MQTT_KEEPALIVE = _CFG["MQTT_KEEPALIVE"]
+MQTT_SSL = _CFG["MQTT_SSL"]
+MQTT_SSL_PARAMS = _CFG["MQTT_SSL_PARAMS"]
 TOPICO_BASE = "estufa/{}/".format(DEVICE_ID)
 TOPICO_TELEMETRIA = TOPICO_BASE + "telemetria"
 TOPICO_ALERTAS = TOPICO_BASE + "alertas"
@@ -78,11 +115,25 @@ def validar_configuracao_mqtt():
         return False
     return True
 
+
+
+def diagnostico_pre_conexao():
+    print("[MQTT][DIAG] broker={} porta={} ssl={}".format(MQTT_BROKER, MQTT_PORT, MQTT_SSL))
+    print("[MQTT][DIAG] user_configurado={} password_configurada={} device_id={}".format(
+        bool(MQTT_USER), bool(MQTT_PASSWORD), DEVICE_ID
+    ))
+    if MQTT_USER == DEVICE_ID:
+        print("[MQTT][DIAG][WARN] Username igual ao device_id. No HiveMQ Cloud, use a credencial criada em Access Management.")
+    if MQTT_PORT == 8883 and not MQTT_SSL:
+        print("[MQTT][DIAG][ERRO] Porta 8883 exige TLS (MQTT_SSL=True).")
+
 def inicializar_cliente_mqtt():
     global _CLIENTE
 
     if not validar_configuracao_mqtt():
         return False
+
+    diagnostico_pre_conexao()
 
     if not wifi.conectado():
         print("[MQTT][WARN] Wi-Fi indisponível para iniciar MQTT.")
