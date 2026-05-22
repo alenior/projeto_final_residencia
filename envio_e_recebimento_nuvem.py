@@ -1,21 +1,12 @@
 """
-envio_e_recebimento_nuvem.py - Camada de integração em nuvem (MQTT + hooks Firebase)
-
-Objetivos:
-- Publicar telemetria e alertas via MQTT
-- Receber comandos assíncronos (rega, aquecimento, captura)
-- Expor pontos de extensão para espelhamento no Firebase
+envio_e_recebimento_nuvem.py - Camada de integração em nuvem (MQTT)
 """
 
 import json
 import time
+from umqtt.simple import MQTTClient
 
 import wifi
-
-try:
-    from umqtt.simple import MQTTClient
-except Exception:
-    MQTTClient = None
 
 DEVICE_ID = "esp32s3-estufa-001"
 MQTT_BROKER = "0754d4c62cd348ccaf698cc85aea935b.s1.eu.hivemq.cloud"
@@ -23,13 +14,15 @@ MQTT_PORT = 8883
 MQTT_USER = "esp32s3-estufa-001"
 MQTT_PASSWORD = "Naodigo2026"
 MQTT_KEEPALIVE = 60
-MQTT_SSL = False
+MQTT_SSL = True
+MQTT_SSL_PARAMS = {}
 
 TOPICO_BASE = "estufa/{}/".format(DEVICE_ID)
 TOPICO_TELEMETRIA = TOPICO_BASE + "telemetria"
 TOPICO_ALERTAS = TOPICO_BASE + "alertas"
 TOPICO_STATUS = TOPICO_BASE + "status"
 TOPICO_COMANDOS = TOPICO_BASE + "comandos"
+TOPICO_TESTE = TOPICO_BASE + "teste"
 
 _CLIENTE = None
 _FILA_COMANDOS = []
@@ -62,11 +55,33 @@ def _on_mqtt_msg(topic, msg):
     _FILA_COMANDOS.append(payload)
 
 
+def imprimir_topicos():
+    print("[MQTT] broker={}:{} ssl={} keepalive={}".format(MQTT_BROKER, MQTT_PORT, MQTT_SSL, MQTT_KEEPALIVE))
+    print("[MQTT] topicos: telemetria={} alertas={} status={} comandos={} teste={}".format(
+        TOPICO_TELEMETRIA, TOPICO_ALERTAS, TOPICO_STATUS, TOPICO_COMANDOS, TOPICO_TESTE
+    ))
+
+
+
+
+def validar_configuracao_mqtt():
+    if MQTT_PORT == 8883 and not MQTT_SSL:
+        print("[MQTT][ERRO] Porta 8883 requer TLS. Defina MQTT_SSL=True.")
+        return False
+    if MQTT_PORT == 1883 and MQTT_SSL:
+        print("[MQTT][WARN] Porta 1883 normalmente é sem TLS. Revise MQTT_SSL.")
+    if not MQTT_BROKER:
+        print("[MQTT][ERRO] MQTT_BROKER não configurado.")
+        return False
+    if not DEVICE_ID:
+        print("[MQTT][ERRO] DEVICE_ID não configurado.")
+        return False
+    return True
+
 def inicializar_cliente_mqtt():
     global _CLIENTE
 
-    if MQTTClient is None:
-        print("[MQTT][WARN] Biblioteca umqtt.simple indisponível.")
+    if not validar_configuracao_mqtt():
         return False
 
     if not wifi.conectado():
@@ -76,24 +91,28 @@ def inicializar_cliente_mqtt():
     if _CLIENTE is not None:
         return True
 
+    user = MQTT_USER or None
+    password = MQTT_PASSWORD or None
+
     try:
         _CLIENTE = MQTTClient(
             client_id=DEVICE_ID,
             server=MQTT_BROKER,
             port=MQTT_PORT,
-            user=MQTT_USER,
-            password=MQTT_PASSWORD,
+            user=user,
+            password=password,
             keepalive=MQTT_KEEPALIVE,
             ssl=MQTT_SSL,
+            ssl_params=MQTT_SSL_PARAMS,
         )
         _CLIENTE.set_callback(_on_mqtt_msg)
         _CLIENTE.connect()
         _CLIENTE.subscribe(TOPICO_COMANDOS)
 
-        publicar_status({"online": True, "ts_ms": time.ticks_ms()})
-        print("[MQTT] Conectado em {}:{} | sub={} | dev={}".format(
-            MQTT_BROKER, MQTT_PORT, TOPICO_COMANDOS, DEVICE_ID
-        ))
+        publicar_status({"online": True, "ts_ms": time.ticks_ms(), "device_id": DEVICE_ID})
+        publicar_teste_boot()
+        imprimir_topicos()
+        print("[MQTT] Conectado com sucesso e assinando {}".format(TOPICO_COMANDOS))
         return True
     except Exception as exc:
         print("[MQTT][ERRO] Falha ao inicializar cliente: {}".format(exc))
@@ -141,6 +160,23 @@ def publicar_status(payload):
         return False
 
 
+def publicar_teste_boot():
+    if not _garantir_cliente():
+        return False
+    payload = {
+        "evento": "boot",
+        "device_id": DEVICE_ID,
+        "uptime_ms": time.ticks_ms(),
+    }
+    try:
+        _CLIENTE.publish(TOPICO_TESTE, _json_dump(payload))
+        print("[MQTT][TESTE] Publicado evento de boot em {}".format(TOPICO_TESTE))
+        return True
+    except Exception as exc:
+        print("[MQTT][WARN] Falha no publish de teste: {}".format(exc))
+        return False
+
+
 def processar_comandos_pendentes(on_irrigar=None, on_aquecer=None, on_capturar=None):
     if _CLIENTE is not None:
         try:
@@ -164,9 +200,3 @@ def processar_comandos_pendentes(on_irrigar=None, on_aquecer=None, on_capturar=N
                 print("[MQTT][WARN] Comando não tratado: {}".format(cmd))
         except Exception as exc:
             print("[MQTT][ERRO] Falha ao processar comando {}: {}".format(cmd, exc))
-
-
-def espelhar_evento_firebase(payload):
-    """Hook para integração futura com Firebase (Cloud Functions/HTTP)."""
-    print("[FIREBASE][MOCK] Evento pronto para espelhamento:", payload)
-    return True
