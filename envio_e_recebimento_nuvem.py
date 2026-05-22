@@ -9,13 +9,14 @@ from umqtt.simple import MQTTClient
 import wifi
 
 DEFAULT_DEVICE_ID = "esp32s3-estufa-001"
-DEFAULT_MQTT_BROKER = "broker.hivemq.com"
-DEFAULT_MQTT_PORT = 1883
-DEFAULT_MQTT_USER = ""
-DEFAULT_MQTT_PASSWORD = ""
+DEFAULT_MQTT_BROKER = "0754d4c62cd348ccaf698cc85aea935b.s1.eu.hivemq.cloud"
+DEFAULT_MQTT_PORT = 8883
+DEFAULT_MQTT_USER = "estufa_iot"
+DEFAULT_MQTT_PASSWORD = "Naodigo2026"
 DEFAULT_MQTT_KEEPALIVE = 60
 DEFAULT_MQTT_SSL = True
 DEFAULT_MQTT_SSL_PARAMS = {}
+DEFAULT_SOCKET_TIMEOUT_S = 8
 
 
 
@@ -29,6 +30,7 @@ def _carregar_config_mqtt():
         "MQTT_KEEPALIVE": DEFAULT_MQTT_KEEPALIVE,
         "MQTT_SSL": DEFAULT_MQTT_SSL,
         "MQTT_SSL_PARAMS": DEFAULT_MQTT_SSL_PARAMS,
+        "SOCKET_TIMEOUT_S": DEFAULT_SOCKET_TIMEOUT_S,
     }
     try:
         secrets = __import__("secrets")
@@ -40,6 +42,7 @@ def _carregar_config_mqtt():
         cfg["MQTT_KEEPALIVE"] = getattr(secrets, "MQTT_KEEPALIVE", cfg["MQTT_KEEPALIVE"])
         cfg["MQTT_SSL"] = getattr(secrets, "MQTT_SSL", cfg["MQTT_SSL"])
         cfg["MQTT_SSL_PARAMS"] = getattr(secrets, "MQTT_SSL_PARAMS", cfg["MQTT_SSL_PARAMS"])
+        cfg["SOCKET_TIMEOUT_S"] = getattr(secrets, "MQTT_SOCKET_TIMEOUT_S", cfg["SOCKET_TIMEOUT_S"])
     except Exception:
         pass
     return cfg
@@ -54,6 +57,7 @@ MQTT_PASSWORD = _CFG["MQTT_PASSWORD"]
 MQTT_KEEPALIVE = _CFG["MQTT_KEEPALIVE"]
 MQTT_SSL = _CFG["MQTT_SSL"]
 MQTT_SSL_PARAMS = _CFG["MQTT_SSL_PARAMS"]
+SOCKET_TIMEOUT_S = _CFG["SOCKET_TIMEOUT_S"]
 TOPICO_BASE = "estufa/{}/".format(DEVICE_ID)
 TOPICO_TELEMETRIA = TOPICO_BASE + "telemetria"
 TOPICO_ALERTAS = TOPICO_BASE + "alertas"
@@ -107,6 +111,8 @@ def validar_configuracao_mqtt():
         return False
     if MQTT_PORT == 1883 and MQTT_SSL:
         print("[MQTT][WARN] Porta 1883 normalmente é sem TLS. Revise MQTT_SSL.")
+    if MQTT_PORT == 8884:
+        print("[MQTT][WARN] Porta 8884 costuma ser MQTT over WebSocket TLS no HiveMQ. Para ESP32 + umqtt.simple use 8883.")
     if not MQTT_BROKER:
         print("[MQTT][ERRO] MQTT_BROKER não configurado.")
         return False
@@ -157,6 +163,10 @@ def inicializar_cliente_mqtt():
             ssl_params=MQTT_SSL_PARAMS,
         )
         _CLIENTE.set_callback(_on_mqtt_msg)
+        try:
+            _CLIENTE.sock.settimeout(SOCKET_TIMEOUT_S)
+        except Exception:
+            pass
         _CLIENTE.connect()
         _CLIENTE.subscribe(TOPICO_COMANDOS)
 
@@ -167,9 +177,32 @@ def inicializar_cliente_mqtt():
         return True
     except Exception as exc:
         print("[MQTT][ERRO] Falha ao inicializar cliente: {}".format(exc))
+        _explicar_erro_conexao(exc)
         _CLIENTE = None
         return False
 
+
+
+
+def _explicar_erro_conexao(exc):
+    codigo = None
+    if hasattr(exc, "args") and exc.args:
+        codigo = exc.args[0]
+
+    mapa = {
+        1: "CONNACK 1: versão de protocolo MQTT não aceita pelo broker.",
+        2: "CONNACK 2: client_id rejeitado.",
+        3: "CONNACK 3: servidor MQTT indisponível.",
+        4: "CONNACK 4: usuário/senha inválidos.",
+        5: "CONNACK 5: não autorizado (credencial/ACL).",
+    }
+
+    if codigo in mapa:
+        print("[MQTT][ERRO][DIAG] {}".format(mapa[codigo]))
+        if codigo in (4, 5):
+            print("[MQTT][ERRO][DIAG] Verifique Credentials e ACL no HiveMQ Cloud para o usuário configurado.")
+    else:
+        print("[MQTT][ERRO][DIAG] Erro não mapeado: {}".format(exc))
 
 def _garantir_cliente():
     if _CLIENTE is None:

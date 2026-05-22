@@ -199,8 +199,9 @@ def ciclo_telemetria_e_automacao():
 
 def executar():
     print_boot_banner()
-    wdt = setup_watchdog()
+    # Evita reset por watchdog durante bootstrap de rede/cloud (pode bloquear).
     bootstrap()
+    wdt = setup_watchdog()
 
     ultimo_time_lapse_dia = None
 

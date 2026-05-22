@@ -90,3 +90,19 @@ Se o cliente web do HiveMQ não conecta com `esp32s3-estufa-001` / `Naodigo2026`
 5. Se falhar, rotacione senha e teste novamente.
 
 > Dica: `device_id` identifica o microcontrolador nos tópicos; não é obrigatoriamente o mesmo valor do usuário MQTT.
+
+
+### 9) Interpretação rápida do erro `5`
+No `umqtt.simple`, erro `5` no `connect()` costuma corresponder a **CONNACK 5 (Not authorized)**.
+
+Isso quase sempre indica configuração no broker:
+- usuário/senha incorretos, ou
+- ACL sem permissão para connect/subscribe/publish nos tópicos usados (`estufa/#`).
+
+Se nem o cliente web HiveMQ conecta com o mesmo usuário/senha, o problema está no broker/credencial (não no firmware).
+
+
+### 10) Porta 8884 no HiveMQ
+- Para **ESP32-S3 + `umqtt.simple`** (MQTT TCP), prefira **8883 (TLS)**.
+- A porta **8884** é frequentemente associada a variações/endpoint de WebSocket TLS em alguns contextos de cliente web, e pode não funcionar com `umqtt.simple`.
+- Se houver travamento/reset por watchdog durante conexão MQTT, reduza bloqueios de rede (timeout de socket) e evite habilitar watchdog antes do bootstrap de rede/cloud.
