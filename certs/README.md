@@ -1,0 +1,1 @@
+Coloque aqui o certificado CA raiz PEM (ex.: ISRG Root X1) e aponte MQTT_CA_CERT_PATH no secrets.py.

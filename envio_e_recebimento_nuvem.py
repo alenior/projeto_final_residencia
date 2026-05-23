@@ -17,6 +17,7 @@ DEFAULT_MQTT_KEEPALIVE = 60
 DEFAULT_MQTT_SSL = True
 DEFAULT_MQTT_SSL_PARAMS = {}
 DEFAULT_SOCKET_TIMEOUT_S = 8
+DEFAULT_CA_CERT_PATH = "/certs/isrgrootx1.pem"
 
 
 
@@ -31,6 +32,7 @@ def _carregar_config_mqtt():
         "MQTT_SSL": DEFAULT_MQTT_SSL,
         "MQTT_SSL_PARAMS": DEFAULT_MQTT_SSL_PARAMS,
         "SOCKET_TIMEOUT_S": DEFAULT_SOCKET_TIMEOUT_S,
+        "CA_CERT_PATH": DEFAULT_CA_CERT_PATH,
     }
     try:
         secrets = __import__("secrets")
@@ -43,6 +45,7 @@ def _carregar_config_mqtt():
         cfg["MQTT_SSL"] = getattr(secrets, "MQTT_SSL", cfg["MQTT_SSL"])
         cfg["MQTT_SSL_PARAMS"] = getattr(secrets, "MQTT_SSL_PARAMS", cfg["MQTT_SSL_PARAMS"])
         cfg["SOCKET_TIMEOUT_S"] = getattr(secrets, "MQTT_SOCKET_TIMEOUT_S", cfg["SOCKET_TIMEOUT_S"])
+        cfg["CA_CERT_PATH"] = getattr(secrets, "MQTT_CA_CERT_PATH", cfg["CA_CERT_PATH"])
     except Exception:
         pass
     return cfg
@@ -58,6 +61,7 @@ MQTT_KEEPALIVE = _CFG["MQTT_KEEPALIVE"]
 MQTT_SSL = _CFG["MQTT_SSL"]
 MQTT_SSL_PARAMS = _CFG["MQTT_SSL_PARAMS"]
 SOCKET_TIMEOUT_S = _CFG["SOCKET_TIMEOUT_S"]
+CA_CERT_PATH = _CFG["CA_CERT_PATH"]
 TOPICO_BASE = "estufa/{}/".format(DEVICE_ID)
 TOPICO_TELEMETRIA = TOPICO_BASE + "telemetria"
 TOPICO_ALERTAS = TOPICO_BASE + "alertas"
@@ -68,6 +72,29 @@ TOPICO_TESTE = TOPICO_BASE + "teste"
 _CLIENTE = None
 _FILA_COMANDOS = []
 
+
+
+
+def _carregar_ssl_params():
+    params = MQTT_SSL_PARAMS if isinstance(MQTT_SSL_PARAMS, dict) else {}
+    params = dict(params)
+
+    if not MQTT_SSL:
+        return params
+
+    if "ca" in params:
+        return params
+
+    try:
+        with open(CA_CERT_PATH, "r") as f:
+            ca_pem = f.read()
+        params["ca"] = ca_pem
+        print("[MQTT][TLS] CA carregada de {}".format(CA_CERT_PATH))
+    except Exception as exc:
+        print("[MQTT][TLS][WARN] Não foi possível carregar CA em '{}': {}".format(CA_CERT_PATH, exc))
+        print("[MQTT][TLS][WARN] Para HiveMQ Cloud, configure MQTT_CA_CERT_PATH ou MQTT_SSL_PARAMS={'ca': '...PEM...'} em secrets.py.")
+
+    return params
 
 def _json_dump(payload):
     try:
@@ -113,6 +140,8 @@ def validar_configuracao_mqtt():
         print("[MQTT][WARN] Porta 1883 normalmente é sem TLS. Revise MQTT_SSL.")
     if MQTT_PORT == 8884:
         print("[MQTT][WARN] Porta 8884 costuma ser MQTT over WebSocket TLS no HiveMQ. Para ESP32 + umqtt.simple use 8883.")
+    if MQTT_SSL and not CA_CERT_PATH and (not isinstance(MQTT_SSL_PARAMS, dict) or "ca" not in MQTT_SSL_PARAMS):
+        print("[MQTT][WARN] TLS ativo sem CA configurada. HiveMQ pode recusar handshake.")
     if not MQTT_BROKER:
         print("[MQTT][ERRO] MQTT_BROKER não configurado.")
         return False
@@ -151,17 +180,36 @@ def inicializar_cliente_mqtt():
     user = MQTT_USER or None
     password = MQTT_PASSWORD or None
 
+    # ssl_params = _carregar_ssl_params()
+    ssl_params = {}
+
     try:
-        _CLIENTE = MQTTClient(
-            client_id=DEVICE_ID,
-            server=MQTT_BROKER,
-            port=MQTT_PORT,
-            user=user,
-            password=password,
-            keepalive=MQTT_KEEPALIVE,
-            ssl=MQTT_SSL,
-            ssl_params=MQTT_SSL_PARAMS,
-        )
+        try:
+            # Prioriza forma posicional para compatibilidade com variações de assinatura do umqtt.simple
+            _CLIENTE = MQTTClient(
+                DEVICE_ID,
+                MQTT_BROKER,
+                MQTT_PORT,
+                user,
+                password,
+                MQTT_KEEPALIVE,
+                MQTT_SSL,
+                ssl_params,
+            )
+        except TypeError as exc_ctor:
+            if "extra keyword arguments given" in str(exc_ctor):
+                print("[MQTT][WARN] Build de umqtt.simple não aceita ssl_params; tentando construtor compatível.")
+                _CLIENTE = MQTTClient(
+                    DEVICE_ID,
+                    MQTT_BROKER,
+                    MQTT_PORT,
+                    user,
+                    password,
+                    MQTT_KEEPALIVE,
+                    MQTT_SSL,
+                )
+            else:
+                raise
         _CLIENTE.set_callback(_on_mqtt_msg)
         try:
             _CLIENTE.sock.settimeout(SOCKET_TIMEOUT_S)

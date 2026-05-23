@@ -16,3 +16,6 @@ MQTT_PASSWORD = "Naodigo2026"
 MQTT_KEEPALIVE = 60
 MQTT_SSL = True
 MQTT_SSL_PARAMS = {}
+
+# Caminho para CA raiz PEM (ex.: ISRG Root X1 / Let's Encrypt)
+MQTT_CA_CERT_PATH = "certs/isrgrootx1.pem"

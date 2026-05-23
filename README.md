@@ -106,3 +106,25 @@ Se nem o cliente web HiveMQ conecta com o mesmo usuário/senha, o problema está
 - Para **ESP32-S3 + `umqtt.simple`** (MQTT TCP), prefira **8883 (TLS)**.
 - A porta **8884** é frequentemente associada a variações/endpoint de WebSocket TLS em alguns contextos de cliente web, e pode não funcionar com `umqtt.simple`.
 - Se houver travamento/reset por watchdog durante conexão MQTT, reduza bloqueios de rede (timeout de socket) e evite habilitar watchdog antes do bootstrap de rede/cloud.
+
+
+### 11) Certificado TLS (CA) no ESP32/MicroPython
+Para HiveMQ Cloud, além de `MQTT_SSL=True`, pode ser necessário informar a CA raiz para validação do servidor.
+
+Opções:
+1. Defina em `secrets.py`: `MQTT_CA_CERT_PATH = "certs/isrgrootx1.pem"` e coloque o PEM no caminho.
+2. Ou defina `MQTT_SSL_PARAMS = {"ca": "-----BEGIN CERTIFICATE-----..."}`.
+
+Sem CA válida, o handshake TLS pode falhar mesmo com porta/usuário/senha corretos.
+
+
+### 12) Erro `extra keyword arguments given` no MQTTClient
+Algumas builds de `umqtt.simple` (MicroPython) não aceitam `ssl_params` no construtor.
+Neste caso, o firmware agora faz fallback automático e tenta criar o cliente sem `ssl_params`.
+Se ainda falhar com TLS, avalie atualizar firmware MicroPython do ESP32-S3 para build com suporte completo a TLS params.
+
+
+### 13) Compatibilidade do construtor MQTTClient no Wokwi
+Algumas builds do `umqtt.simple` no Wokwi têm assinatura diferente para `MQTTClient(...)`.
+Por isso o firmware usa chamada **posicional** e fallback sem `ssl_params` quando necessário.
+Se aparecer `extra keyword arguments given`, confirme que está usando a versão atualizada deste arquivo no simulador.
