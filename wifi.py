@@ -5,7 +5,7 @@ wifi.py - Gerenciamento de conectividade Wi-Fi para ESP32-S3 (MicroPython)
 import network
 import time
 
-DEFAULT_SSID = "Wokwi-GUEST"
+DEFAULT_SSID = ""
 DEFAULT_PASSWORD = ""
 CONNECT_TIMEOUT_S = 15
 RETRY_DELAY_S = 3
