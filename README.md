@@ -42,3 +42,14 @@ Arquitetura inicial sugerida:
 1. ESP32 publica telemetria/comandos no MQTT.
 2. Serviço ponte consome MQTT e grava no Firestore.
 3. Módulo de câmera envia imagens para Storage quando implantado.
+
+## Integração com Firebase (fase atual)
+Para evitar divergências e duplicidades de estrutura, os registros iniciais no Firestore devem ser criados automaticamente pela ponte MQTT (backend), não manualmente.
+
+- Veja `firebase_bridge/` para serviço de ingestão MQTT -> Firestore.
+- Veja `FIREBASE_RULES.md` para regras iniciais de Firestore e Storage.
+
+Fluxo:
+1. Firmware publica no MQTT.
+2. Ponte consome e persiste no Firestore.
+3. Futuramente, imagens vão para Firebase Storage com metadados no Firestore.

@@ -1,0 +1,14 @@
+{
+  "name": "estufa-firebase-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bridge MQTT -> Firestore/Storage metadata for Estufa IoT",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "mqtt": "^5.10.0"
+  }
+}

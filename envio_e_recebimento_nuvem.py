@@ -182,4 +182,38 @@ def publicar_telemetria(payload):
     except Exception as exc:
         print("[MQTT][WARN] Falha ao publicar telemetria: {}".format(exc))
         return False
-    
+
+
+def publicar_alerta_movimento(payload):
+    if not _garantir_cliente():
+        return False
+    try:
+        _CLIENTE.publish(TOPICO_ALERTAS, _json_dump({"tipo": "movimento", "payload": payload}))
+        return True
+    except Exception as exc:
+        print("[MQTT][WARN] Falha ao publicar alerta: {}".format(exc))
+        return False
+
+
+def processar_comandos_pendentes(on_irrigar=None, on_aquecer=None, on_capturar=None):
+    if _CLIENTE is not None:
+        try:
+            _CLIENTE.check_msg()
+        except Exception as exc:
+            print("[MQTT][WARN] check_msg falhou: {}".format(exc))
+
+    while _FILA_COMANDOS:
+        cmd = _FILA_COMANDOS.pop(0)
+        comando = cmd.get("comando")
+        status = cmd.get("status", True)
+        try:
+            if comando == "irrigar" and on_irrigar:
+                on_irrigar(status)
+            elif comando == "aquecer" and on_aquecer:
+                on_aquecer(status)
+            elif comando == "capturar" and on_capturar and status:
+                on_capturar()
+            else:
+                print("[MQTT][WARN] Comando não tratado: {}".format(cmd))
+        except Exception as exc:
+            print("[MQTT][ERRO] Falha ao processar comando {}: {}".format(cmd, exc))
