@@ -4,7 +4,7 @@ Copie este arquivo para `secrets.py` e preencha conforme seu ambiente local.
 """
 
 # Wi-Fi
-WIFI_SSID = "GCNET-Alencar"
+WIFI_SSID = "Alencar's Galaxy M14 5G"
 WIFI_PASSWORD = "11223344"
 
 # MQTT (modo prototipação / broker público)

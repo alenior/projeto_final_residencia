@@ -1,34 +1,40 @@
 # Regras iniciais (Firestore e Storage)
 
-## Firestore rules (inicial)
+## Firestore (cliente Flutter)
 ```txt
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /devices/{deviceId}/{document=**} {
+    match /devices/{deviceId} {
       allow read: if request.auth != null;
-      allow write: if false; // somente Admin SDK (bridge)
-    }
+      allow write: if false;
 
-    match /commands/{docId} {
-      allow read, write: if request.auth != null;
+      match /commands/{commandId} {
+        allow create: if request.auth != null;
+        allow read: if request.auth != null;
+        allow update, delete: if false;
+      }
+
+      match /{subCollection=**}/{docId} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
     }
   }
 }
 ```
 
-## Storage rules (inicial)
+## Storage (inicial)
 ```txt
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /devices/{deviceId}/images/{allPaths=**} {
+    match /devices/{deviceId}/{allPaths=**} {
       allow read: if request.auth != null;
-      allow write: if false; // somente backend autenticado (Admin SDK)
+      allow write: if false;
     }
   }
 }
 ```
 
-## Observação
-Com Admin SDK no bridge, gravações no Firestore/Storage não dependem dessas regras de cliente.
+> Observação: gravações de backend (Cloud Functions com Admin SDK) ignoram rules de cliente.

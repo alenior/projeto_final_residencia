@@ -1,55 +1,63 @@
-# Projeto Final de Residência - Estufa IoT
+# Estufa IoT - Firmware ESP32 + Firebase
 
-## Modo atual de prototipação MQTT (facilitado)
-Para acelerar o desenvolvimento do firmware, o projeto está configurado para broker público sem TLS/autenticação:
+Projeto de prototipação da Estufa IoT com firmware MicroPython no ESP32 e integração em nuvem via MQTT + Firebase.
 
-- `MQTT_BROKER = "broker.hivemq.com"`
-- `MQTT_PORT = 1883`
-- `MQTT_USER = ""`
-- `MQTT_PASSWORD = ""`
+## Componentes
+- Firmware (`main.py`, `wifi.py`, `sincronizar_horario.py`, `envio_e_recebimento_nuvem.py`)
+- Firebase Cloud Functions (`functions/`) para:
+  - ingestão de eventos MQTT no Firestore
+  - despacho de comandos Firestore -> MQTT
 
-> Os refinamentos de segurança (TLS/ACL/credenciais privadas) serão retomados em etapa posterior.
+## Fluxos de comunicação
+1. **Subida (telemetria/logs):** ESP32 -> MQTT -> Cloud Functions (HTTP ingest) -> Firestore
+2. **Descida (comandos):** App Flutter escreve comando em Firestore -> Cloud Function publica MQTT -> ESP32 consome
 
-## Tópicos do projeto
-Publicação:
-- `estufa/<device_id>/telemetria`
-- `estufa/<device_id>/alertas`
-- `estufa/<device_id>/status`
-- `estufa/<device_id>/teste`
+## Tópicos MQTT
+- Base firmware: `estufa/embarcatech2026/<deviceId>/...`
+- Publicações:
+  - `telemetria`
+  - `alertas`
+  - `status`
+  - `teste`
+- Comandos (consumo no firmware):
+  - `estufa/embarcatech2026/<deviceId>/comandos`
+  - `estufa/comandos` (compatibilidade legado)
 
-Subscrição:
-- `estufa/<device_id>/comandos`
-- `estufa/comandos` (comandos gerais)
+## Deploy Cloud Functions
+### Pré-requisitos
+- Node.js 20+
+- Firebase CLI (`npm i -g firebase-tools`)
+- Projeto Firebase criado (Firestore habilitado)
 
-## Fluxo de teste bidirecional (ESP32 ↔ broker)
-1. Copie `secrets.py.example` para `secrets.py` e ajuste Wi-Fi/device_id.
-2. Suba firmware no ESP32.
-3. Abra um cliente MQTT (HiveMQ Web Client ou MQTT Explorer) e assine:
-   - `estufa/<device_id>/#`
-   - `estufa/comandos`
-4. Verifique mensagens de boot/status/telemetria.
-5. Publique comando de teste em `estufa/<device_id>/comandos` ou `estufa/comandos`:
+### Passos
+1. Login:
+   - `firebase login`
+2. Selecionar projeto:
+   - `firebase use --add`
+3. Entrar em `functions/` e instalar dependências:
+   - `cd functions`
+   - `npm install`
+4. Configurar variáveis de ambiente locais (opcional para emulação):
+   - copiar `functions/.env.example`
+5. Deploy:
+   - `firebase deploy --only functions`
+
+## Uso de comandos via Firestore
+Grave um documento em:
+`devices/<deviceId>/commands/<commandId>`
+
+Exemplo de payload:
 ```json
-{"comando":"capturar","status":true}
+{
+  "comando": "irrigar",
+  "status": true,
+  "namespace": "embarcatech2026",
+  "origem": "flutter_app"
+}
 ```
 
-## Próximo passo recomendado: Firebase
-Sim — o próximo passo adequado é iniciar Firebase com foco em:
-- **Firebase Storage** para imagens capturadas pela câmera.
-- **Cloud Firestore** para logs e eventos da estufa.
+A função `dispatchCommandToMqtt` publicará no tópico MQTT do dispositivo e marcará o documento com `dispatched=true`.
 
-Arquitetura inicial sugerida:
-1. ESP32 publica telemetria/comandos no MQTT.
-2. Serviço ponte consome MQTT e grava no Firestore.
-3. Módulo de câmera envia imagens para Storage quando implantado.
-
-## Integração com Firebase (fase atual)
-Para evitar divergências e duplicidades de estrutura, os registros iniciais no Firestore devem ser criados automaticamente pela ponte MQTT (backend), não manualmente.
-
-- Veja `firebase_bridge/` para serviço de ingestão MQTT -> Firestore.
-- Veja `FIREBASE_RULES.md` para regras iniciais de Firestore e Storage.
-
-Fluxo:
-1. Firmware publica no MQTT.
-2. Ponte consome e persiste no Firestore.
-3. Futuramente, imagens vão para Firebase Storage com metadados no Firestore.
+## Segurança
+- Não versionar segredos (`secrets.py`, `.env`, chaves de serviço)
+- Migrar para broker autenticado/TLS em produção

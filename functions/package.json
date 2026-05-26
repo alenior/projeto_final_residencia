@@ -1,0 +1,16 @@
+{
+  "name": "estufa-functions",
+  "private": true,
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "scripts": {
+    "lint": "echo 'no lint configured'",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^5.1.1",
+    "mqtt": "^5.10.4"
+  }
+}
