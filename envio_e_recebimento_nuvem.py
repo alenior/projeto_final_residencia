@@ -64,6 +64,19 @@ _CLIENTE = None
 _FILA_COMANDOS = []
 
 
+def _descartar_cliente_mqtt(motivo=""):
+    global _CLIENTE
+    if _CLIENTE is None:
+        return
+    try:
+        _CLIENTE.disconnect()
+    except Exception:
+        pass
+    _CLIENTE = None
+    if motivo:
+        print("[MQTT][RECONN] Cliente descartado: {}".format(motivo))
+
+
 def _json_dump(payload):
     try:
         return json.dumps(payload)
@@ -163,7 +176,7 @@ def inicializar_cliente_mqtt():
         return True
     except Exception as exc:
         print("[MQTT][ERRO] Falha ao inicializar cliente: {}".format(exc))
-        _CLIENTE = None
+        _descartar_cliente_mqtt("falha na inicializacao")
         return False
 
 
@@ -181,6 +194,7 @@ def publicar_telemetria(payload):
         return True
     except Exception as exc:
         print("[MQTT][WARN] Falha ao publicar telemetria: {}".format(exc))
+        _descartar_cliente_mqtt("falha publish telemetria")
         return False
 
 
@@ -192,6 +206,7 @@ def publicar_alerta_movimento(payload):
         return True
     except Exception as exc:
         print("[MQTT][WARN] Falha ao publicar alerta: {}".format(exc))
+        _descartar_cliente_mqtt("falha publish alerta")
         return False
 
 
@@ -201,6 +216,7 @@ def processar_comandos_pendentes(on_irrigar=None, on_aquecer=None, on_capturar=N
             _CLIENTE.check_msg()
         except Exception as exc:
             print("[MQTT][WARN] check_msg falhou: {}".format(exc))
+            _descartar_cliente_mqtt("falha check_msg")
 
     while _FILA_COMANDOS:
         cmd = _FILA_COMANDOS.pop(0)

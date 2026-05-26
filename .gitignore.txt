@@ -1,4 +1,5 @@
 __pycache__/
 *.pyc
 secrets.py
-/firebase_bridge/serviceAccountKey.json
+firebase_bridge/serviceAccountKey.json
+firebase_bridge/.env
