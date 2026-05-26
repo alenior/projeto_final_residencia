@@ -17,3 +17,10 @@ Este serviço recebe mensagens MQTT publicadas pelo firmware e grava no Firestor
 
 ## Storage (imagens)
 Quando o módulo de câmera estiver pronto, recomenda-se enviar metadados da imagem por MQTT para uma coleção `images` e o upload binário via endpoint HTTP autenticado (Cloud Run/Function) para o Firebase Storage.
+
+
+## Namespace de tópicos
+- Recomendado usar namespace no tópico (ex.: `estufa/embarcatech2026/<deviceId>/<kind>`).
+- O bridge já suporta ambos formatos:
+  - `estufa/<deviceId>/<kind>`
+  - `estufa/<namespace>/<deviceId>/<kind>`

@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const admin = require('firebase-admin');
 const mqtt = require('mqtt');
 
@@ -13,16 +15,22 @@ const db = admin.firestore();
 
 function parseTopic(topic) {
   const p = topic.split('/');
+  // Suporta: estufa/<deviceId>/<kind> e estufa/<namespace>/<deviceId>/<kind>
   if (p.length < 3 || p[0] !== 'estufa') return null;
-  return { deviceId: p[1], kind: p[2] };
+
+  if (p.length >= 4) {
+    return { namespace: p[1], deviceId: p[2], kind: p[3] };
+  }
+
+  return { namespace: null, deviceId: p[1], kind: p[2] };
 }
 
-async function writeByKind({ deviceId, kind, payload, topic }) {
+async function writeByKind({ namespace, deviceId, kind, payload, topic }) {
   const now = admin.firestore.FieldValue.serverTimestamp();
   const base = db.collection(prefix).doc(deviceId);
 
   if (kind === 'status') {
-    await base.collection('status').doc('current').set({ ...payload, topic, updated_at: now }, { merge: true });
+    await base.collection('status').doc('current').set({ ...payload, topic, namespace, updated_at: now }, { merge: true });
     return;
   }
 
@@ -31,7 +39,7 @@ async function writeByKind({ deviceId, kind, payload, topic }) {
       : kind === 'teste' ? 'actions'
         : 'events';
 
-  await base.collection(target).add({ ...payload, topic, received_at: now });
+  await base.collection(target).add({ ...payload, topic, namespace, received_at: now });
 }
 
 const client = mqtt.connect(mqttUrl, { username: mqttUsername, password: mqttPassword, clean: true });
