@@ -10,7 +10,8 @@ from umqtt.simple import MQTTClient
 
 import wifi
 
-DEFAULT_DEVICE_ID = "esp32-estufa-dev"
+DEFAULT_DEVICE_ID = "esp32-estufa-001"
+DEFAULT_MQTT_NAMESPACE = "embarcatech2026"
 DEFAULT_MQTT_BROKER = "broker.hivemq.com"
 DEFAULT_MQTT_PORT = 1883
 DEFAULT_MQTT_USER = ""
@@ -22,6 +23,7 @@ DEFAULT_SOCKET_TIMEOUT_S = 8
 def _carregar_config_mqtt():
     cfg = {
         "DEVICE_ID": DEFAULT_DEVICE_ID,
+        "MQTT_NAMESPACE": DEFAULT_MQTT_NAMESPACE,
         "MQTT_BROKER": DEFAULT_MQTT_BROKER,
         "MQTT_PORT": DEFAULT_MQTT_PORT,
         "MQTT_USER": DEFAULT_MQTT_USER,
@@ -32,6 +34,7 @@ def _carregar_config_mqtt():
     try:
         secrets = __import__("secrets")
         cfg["DEVICE_ID"] = getattr(secrets, "MQTT_DEVICE_ID", cfg["DEVICE_ID"])
+        cfg["MQTT_NAMESPACE"] = getattr(secrets, "MQTT_NAMESPACE", cfg["MQTT_NAMESPACE"])
         cfg["MQTT_BROKER"] = getattr(secrets, "MQTT_BROKER", cfg["MQTT_BROKER"])
         cfg["MQTT_PORT"] = getattr(secrets, "MQTT_PORT", cfg["MQTT_PORT"])
         cfg["MQTT_USER"] = getattr(secrets, "MQTT_USER", cfg["MQTT_USER"])
@@ -45,6 +48,7 @@ def _carregar_config_mqtt():
 
 _CFG = _carregar_config_mqtt()
 DEVICE_ID = _CFG["DEVICE_ID"]
+MQTT_NAMESPACE = _CFG["MQTT_NAMESPACE"]
 MQTT_BROKER = _CFG["MQTT_BROKER"]
 MQTT_PORT = _CFG["MQTT_PORT"]
 MQTT_USER = _CFG["MQTT_USER"]
@@ -52,12 +56,13 @@ MQTT_PASSWORD = _CFG["MQTT_PASSWORD"]
 MQTT_KEEPALIVE = _CFG["MQTT_KEEPALIVE"]
 SOCKET_TIMEOUT_S = _CFG["SOCKET_TIMEOUT_S"]
 
-TOPICO_BASE = "estufa/{}/".format(DEVICE_ID)
+TOPICO_BASE = "estufa/{}/{}/".format(MQTT_NAMESPACE, DEVICE_ID)
 TOPICO_TELEMETRIA = TOPICO_BASE + "telemetria"
 TOPICO_ALERTAS = TOPICO_BASE + "alertas"
 TOPICO_STATUS = TOPICO_BASE + "status"
 TOPICO_TESTE = TOPICO_BASE + "teste"
 TOPICO_COMANDOS_DEVICE = TOPICO_BASE + "comandos"
+TOPICO_COMANDOS_DEVICE_LEGADO = "estufa/{}/comandos".format(DEVICE_ID)
 TOPICO_COMANDOS_GERAL = "estufa/comandos"
 
 _CLIENTE = None
@@ -109,7 +114,7 @@ def imprimir_topicos():
     print("[MQTT] pub: telemetria={} alertas={} status={} teste={}".format(
         TOPICO_TELEMETRIA, TOPICO_ALERTAS, TOPICO_STATUS, TOPICO_TESTE
     ))
-    print("[MQTT] sub: {} | {}".format(TOPICO_COMANDOS_DEVICE, TOPICO_COMANDOS_GERAL))
+    print("[MQTT] sub: {} | {} | {}".format(TOPICO_COMANDOS_DEVICE, TOPICO_COMANDOS_DEVICE_LEGADO, TOPICO_COMANDOS_GERAL))
 
 
 def _criar_cliente_mqtt(user, password):
@@ -168,6 +173,7 @@ def inicializar_cliente_mqtt():
 
         _CLIENTE.connect()
         _CLIENTE.subscribe(TOPICO_COMANDOS_DEVICE)
+        _CLIENTE.subscribe(TOPICO_COMANDOS_DEVICE_LEGADO)
         _CLIENTE.subscribe(TOPICO_COMANDOS_GERAL)
 
         _CLIENTE.publish(TOPICO_STATUS, _json_dump({"online": True, "ts_ms": time.ticks_ms(), "device_id": DEVICE_ID}), retain=True)

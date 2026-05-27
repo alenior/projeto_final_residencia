@@ -31,6 +31,7 @@ PIN_RELE_LAMPADA = 48
 PIN_PIR = 42
 PIN_SOLO_ADC = 41
 PIN_LDR_ADC = 1
+PIN_VENTOINHA = 44
 
 
 # -----------------------------------------------------------------------------
@@ -116,12 +117,13 @@ def print_boot_banner():
     for key in sorted(info.keys()):
         print("{}: {}".format(key, info[key]))
 
-    print("GPIOs críticos -> bomba:{} lâmpada:{} pir:{} solo:{} ldr:{}".format(
+    print("GPIOs críticos -> bomba:{} lâmpada:{} pir:{} solo:{} ldr:{} ventoinha:{}".format(
         PIN_RELE_BOMBA,
         PIN_RELE_LAMPADA,
         PIN_PIR,
         PIN_SOLO_ADC,
         PIN_LDR_ADC,
+        PIN_VENTOINHA
     ))
     print("==============================================\n")
 
