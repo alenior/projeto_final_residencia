@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "estufa-iot-25a96",
+    "estufa_iot": "estufa-iot-25a96"
+  },
+  "targets": {},
+  "etags": {}
+}
