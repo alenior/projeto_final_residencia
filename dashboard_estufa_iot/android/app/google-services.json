@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "161593984792",
+    "project_id": "estufa-iot-25a96",
+    "storage_bucket": "estufa-iot-25a96.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:161593984792:android:be5ec12902d47e1332406d",
+        "android_client_info": {
+          "package_name": "com.example.dashboard_estufa_iot"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0BKRVR7hbHMadjB4Bd8p9RHZLCh8XNuI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
