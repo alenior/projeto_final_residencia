@@ -1,4 +1,11 @@
 __pycache__/
 *.pyc
 secrets.py
-dashboard_estufa_iot\lib\firebase_options.dart
+firebase_bridge/serviceAccountKey.json
+firebase_bridge/.env
+functions/.env
+functions/node_modules/
+dashboard_estufa_iot/.dart_tool/
+dashboard_estufa_iot/build/
+dashboard_estufa_iot/android/.gradle/
+dashboard_estufa_iot/lib/firebase_options.dart
