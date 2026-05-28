@@ -1,18 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
-import '../../core/constants/firestore_paths.dart';
+
 import '../../core/models/command_request.dart';
 
 class CommandRepository {
-  final FirebaseFirestore _db;
-  CommandRepository(this._db);
+  final FirebaseFirestore _firestore;
+  final Uuid _uuid;
 
-  Future<void> sendCommand(String deviceId, CommandRequest cmd) async {
-    final id = const Uuid().v4();
-    final ref = _db.doc('${FirestorePaths.commandsCol(deviceId)}/$id');
-    await ref.set({
-      ...cmd.toMap(),
+  CommandRepository({FirebaseFirestore? firestore, Uuid? uuid})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _uuid = uuid ?? const Uuid();
+
+  Future<DocumentReference<Map<String, dynamic>>> sendCommand(
+    String deviceId,
+    CommandRequest command,
+  ) async {
+    final doc = _firestore.collection('devices/$deviceId/commands').doc(_uuid.v4());
+    await doc.set({
+      ...command.toMap(),
       'created_at': FieldValue.serverTimestamp(),
     });
+    return doc;
   }
 }

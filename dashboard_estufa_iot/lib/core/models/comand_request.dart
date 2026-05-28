@@ -1,3 +1,7 @@
+/// Contrato de comando enviado pelo app para `devices/{deviceId}/commands/*`.
+///
+/// A Cloud Function `dispatchCommandToMqtt` lê esses campos e publica o payload
+/// equivalente no tópico MQTT consumido pelo ESP32.
 class CommandRequest {
   final String comando;
   final bool status;
@@ -5,7 +9,7 @@ class CommandRequest {
   final String namespace;
   final String? topic;
 
-  CommandRequest({
+  const CommandRequest({
     required this.comando,
     required this.status,
     this.origem = 'flutter_app',
@@ -18,6 +22,6 @@ class CommandRequest {
         'status': status,
         'origem': origem,
         'namespace': namespace,
-        if (topic != null) 'topic': topic,
+        if (topic != null && topic!.isNotEmpty) 'topic': topic,
       };
 }
