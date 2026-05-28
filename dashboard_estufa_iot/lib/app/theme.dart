@@ -17,7 +17,7 @@ ThemeData buildEstufaTheme() {
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: const Color(0xFFF6F8F3),
-    cardTheme: const CardTheme(
+    cardTheme: const CardThemeData(
       elevation: 2,
       margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
     ),

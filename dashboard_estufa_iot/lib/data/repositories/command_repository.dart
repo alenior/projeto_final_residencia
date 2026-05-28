@@ -7,7 +7,7 @@ class CommandRepository {
   final FirebaseFirestore _firestore;
   final Uuid _uuid;
 
-  CommandRepository({FirebaseFirestore? firestore, Uuid? uuid})
+  CommandRepository(FirebaseFirestore watch, {FirebaseFirestore? firestore, Uuid? uuid})
       : _firestore = firestore ?? FirebaseFirestore.instance,
         _uuid = uuid ?? const Uuid();
 

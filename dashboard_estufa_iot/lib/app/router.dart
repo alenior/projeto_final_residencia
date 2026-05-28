@@ -10,11 +10,11 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     routes: [
-      GoRoute(path: '/', builder: (_, __) => const DashboardPage()),
-      GoRoute(path: '/device', builder: (_, __) => const DeviceInfoPage()),
-      GoRoute(path: '/climate', builder: (_, __) => const ClimatePage()),
-      GoRoute(path: '/irrigation', builder: (_, __) => const IrrigationPage()),
-      GoRoute(path: '/camera', builder: (_, __) => const CameraPage()),
+      GoRoute(path: '/', builder: (_, _) => const DashboardPage()),
+      GoRoute(path: '/device', builder: (_, _) => const DeviceInfoPage()),
+      GoRoute(path: '/climate', builder: (_, _) => const ClimatePage()),
+      GoRoute(path: '/irrigation', builder: (_, _) => const IrrigationPage()),
+      GoRoute(path: '/camera', builder: (_, _) => const CameraPage()),
     ],
   );
 });
