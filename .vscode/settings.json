@@ -1,0 +1,10 @@
+{
+    "python.analysis.extraPaths": [
+        "C:\\Users\\alenc\\AppData\\Roaming\\Python\\Python314\\site-packages"
+    ],
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingImports": "information"
+    },
+    "cmake.ignoreCMakeListsMissing": true,
+    "micropico.syncFolder": ""
+}

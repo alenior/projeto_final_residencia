@@ -1,6 +1,6 @@
 {
-    "name": "dashboard_estufa_iot",
-    "short_name": "dashboard_estufa_iot",
+    "name": "Estufa IoT",
+    "short_name": "Estufa IoT",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
