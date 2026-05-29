@@ -12,19 +12,34 @@ class IrrigationPage extends ConsumerWidget {
     final repo = ref.watch(commandRepositoryProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Rega')),
+      backgroundColor: Colors.lightBlue.shade100,
+
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.black,
+        title: const Text('Rega'),
+      ),
+
       body: Center(
         child: ElevatedButton.icon(
           icon: const Icon(Icons.play_arrow),
           label: const Text('Irrigar agora'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.black,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          ),
           onPressed: () async {
             await repo.sendCommand(
               deviceId,
               CommandRequest(comando: 'irrigar', status: true),
             );
+
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Comando enviado para fila Firebase')),
+                const SnackBar(
+                  content: Text('Comando enviado para fila Firebase'),
+                ),
               );
             }
           },
