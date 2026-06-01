@@ -10,7 +10,7 @@ from umqtt.simple import MQTTClient
 
 import wifi
 
-DEFAULT_DEVICE_ID = "esp32-estufa-001"
+DEFAULT_DEVICE_ID = "esp32-estufa-dev"
 DEFAULT_MQTT_NAMESPACE = "embarcatech2026"
 DEFAULT_MQTT_BROKER = "broker.hivemq.com"
 DEFAULT_MQTT_PORT = 1883
@@ -61,6 +61,7 @@ TOPICO_TELEMETRIA = TOPICO_BASE + "telemetria"
 TOPICO_ALERTAS = TOPICO_BASE + "alertas"
 TOPICO_STATUS = TOPICO_BASE + "status"
 TOPICO_TESTE = TOPICO_BASE + "teste"
+TOPICO_CAMERA = TOPICO_BASE + "camera"
 TOPICO_COMANDOS_DEVICE = TOPICO_BASE + "comandos"
 TOPICO_COMANDOS_DEVICE_LEGADO = "estufa/{}/comandos".format(DEVICE_ID)
 TOPICO_COMANDOS_GERAL = "estufa/comandos"
@@ -111,10 +112,14 @@ def _on_mqtt_msg(topic, msg):
 
 def imprimir_topicos():
     print("[MQTT] broker={}:{} keepalive={}".format(MQTT_BROKER, MQTT_PORT, MQTT_KEEPALIVE))
-    print("[MQTT] pub: telemetria={} alertas={} status={} teste={}".format(
-        TOPICO_TELEMETRIA, TOPICO_ALERTAS, TOPICO_STATUS, TOPICO_TESTE
+    print("[MQTT] pub: telemetria={} alertas={} status={} teste={} camera={}".format(
+        TOPICO_TELEMETRIA, TOPICO_ALERTAS, TOPICO_STATUS, TOPICO_TESTE, TOPICO_CAMERA
     ))
-    print("[MQTT] sub: {} | {} | {}".format(TOPICO_COMANDOS_DEVICE, TOPICO_COMANDOS_DEVICE_LEGADO, TOPICO_COMANDOS_GERAL))
+    print("[MQTT] sub: {} | {} | {}".format(
+        TOPICO_COMANDOS_DEVICE,
+        TOPICO_COMANDOS_DEVICE_LEGADO,
+        TOPICO_COMANDOS_GERAL,
+    ))
 
 
 def _criar_cliente_mqtt(user, password):
@@ -192,31 +197,31 @@ def _garantir_cliente():
     return True
 
 
-def publicar_telemetria(payload):
+def _publicar(topico, payload, retain=False):
     if not _garantir_cliente():
         return False
     try:
-        _CLIENTE.publish(TOPICO_TELEMETRIA, _json_dump(payload))
+        _CLIENTE.publish(topico, _json_dump(payload), retain=retain)
         return True
     except Exception as exc:
-        print("[MQTT][WARN] Falha ao publicar telemetria: {}".format(exc))
-        _descartar_cliente_mqtt("falha publish telemetria")
+        print("[MQTT][WARN] Falha ao publicar em {}: {}".format(topico, exc))
+        _descartar_cliente_mqtt("falha publish")
         return False
+
+
+def publicar_telemetria(payload):
+    return _publicar(TOPICO_TELEMETRIA, payload)
 
 
 def publicar_alerta_movimento(payload):
-    if not _garantir_cliente():
-        return False
-    try:
-        _CLIENTE.publish(TOPICO_ALERTAS, _json_dump({"tipo": "movimento", "payload": payload}))
-        return True
-    except Exception as exc:
-        print("[MQTT][WARN] Falha ao publicar alerta: {}".format(exc))
-        _descartar_cliente_mqtt("falha publish alerta")
-        return False
+    return _publicar(TOPICO_ALERTAS, {"tipo": "movimento", "payload": payload})
 
 
-def processar_comandos_pendentes(on_irrigar=None, on_aquecer=None, on_capturar=None):
+def publicar_evento_camera(payload):
+    return _publicar(TOPICO_CAMERA, payload)
+
+
+def processar_comandos_pendentes(on_irrigar=None, on_aquecer=None, on_capturar=None, on_configurar_camera=None, on_ventilar=None):
     if _CLIENTE is not None:
         try:
             _CLIENTE.check_msg()
@@ -233,8 +238,12 @@ def processar_comandos_pendentes(on_irrigar=None, on_aquecer=None, on_capturar=N
                 on_irrigar(status)
             elif comando == "aquecer" and on_aquecer:
                 on_aquecer(status)
+            elif comando == "ventilar" and on_ventilar:
+                on_ventilar(status)
             elif comando == "capturar" and on_capturar and status:
                 on_capturar()
+            elif comando in ("configurar_camera", "camera_config") and on_configurar_camera:
+                on_configurar_camera(cmd)
             else:
                 print("[MQTT][WARN] Comando não tratado: {}".format(cmd))
         except Exception as exc:

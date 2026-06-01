@@ -57,7 +57,10 @@ class DeviceStatus {
     DocumentSnapshot<Map<String, dynamic>> snapshot,
   ) {
     final data = snapshot.data() ?? <String, dynamic>{};
-    return DeviceStatus.fromMap(snapshot.reference.parent.parent?.id ?? snapshot.id, data);
+    return DeviceStatus.fromMap(
+      snapshot.reference.parent.parent?.id ?? snapshot.id,
+      data,
+    );
   }
 
   factory DeviceStatus.fromMap(String deviceId, Map<String, dynamic> data) {
@@ -98,22 +101,22 @@ class DeviceStatus {
   }
 
   Map<String, dynamic> toMap() => {
-        'device_id': deviceId,
-        'namespace': namespace,
-        'topic': topic,
-        'online': online,
-        'updated_at': updatedAt,
-        'timestamp': deviceTimestamp,
-        'mac': mac,
-        'uid': uid,
-        'platform': platform,
-        'python': pythonVersion,
-        'freq_hz': frequencyHz,
-        'mem_free': memFree,
-        'mem_alloc': memAlloc,
-        'reset_cause': resetCause,
-        'wake_reason': wakeReason,
-      };
+    'device_id': deviceId,
+    'namespace': namespace,
+    'topic': topic,
+    'online': online,
+    'updated_at': updatedAt,
+    'timestamp': deviceTimestamp,
+    'mac': mac,
+    'uid': uid,
+    'platform': platform,
+    'python': pythonVersion,
+    'freq_hz': frequencyHz,
+    'mem_free': memFree,
+    'mem_alloc': memAlloc,
+    'reset_cause': resetCause,
+    'wake_reason': wakeReason,
+  };
 
   static Map<String, dynamic> _asMap(Object? value) {
     if (value is Map<String, dynamic>) return value;

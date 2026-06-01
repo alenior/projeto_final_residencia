@@ -8,6 +8,7 @@ class CommandRequest {
   final String origem;
   final String namespace;
   final String? topic;
+  final Map<String, dynamic> extraPayload;
 
   const CommandRequest({
     required this.comando,
@@ -15,13 +16,15 @@ class CommandRequest {
     this.origem = 'flutter_app',
     this.namespace = 'embarcatech2026',
     this.topic,
+    this.extraPayload = const {},
   });
 
   Map<String, dynamic> toMap() => {
-        'comando': comando,
-        'status': status,
-        'origem': origem,
-        'namespace': namespace,
-        if (topic != null && topic!.isNotEmpty) 'topic': topic,
-      };
+    'comando': comando,
+    'status': status,
+    'origem': origem,
+    'namespace': namespace,
+    ...extraPayload,
+    if (topic != null && topic!.isNotEmpty) 'topic': topic,
+  };
 }

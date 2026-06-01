@@ -99,18 +99,18 @@ class TelemetryPoint {
   bool get hasLuminosityReading => luminosity != null;
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'device_id': deviceId,
-        'namespace': namespace,
-        'topic': topic,
-        'received_at': receivedAt,
-        'timestamp': timestamp,
-        'temp_c': temperatureC,
-        'umidade_ar': airHumidity,
-        'umidade_solo': soilHumidity,
-        'luminosidade': luminosity,
-        'movimento': motionDetected,
-      };
+    'id': id,
+    'device_id': deviceId,
+    'namespace': namespace,
+    'topic': topic,
+    'received_at': receivedAt,
+    'timestamp': timestamp,
+    'temp_c': temperatureC,
+    'umidade_ar': airHumidity,
+    'umidade_solo': soilHumidity,
+    'luminosidade': luminosity,
+    'movimento': motionDetected,
+  };
 
   static Map<String, dynamic> _asMap(Object? value) {
     if (value is Map<String, dynamic>) return value;

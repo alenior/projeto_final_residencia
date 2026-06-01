@@ -123,7 +123,7 @@ def print_boot_banner():
         PIN_PIR,
         PIN_SOLO_ADC,
         PIN_LDR_ADC,
-        PIN_VENTOINHA
+        PIN_VENTOINHA,
     ))
     print("==============================================\n")
 
@@ -195,8 +195,12 @@ def ciclo_telemetria_e_automacao():
     envio_e_recebimento_nuvem.processar_comandos_pendentes(
         on_irrigar=rega.comando_irrigacao,
         on_aquecer=clima.comando_aquecimento,
-        on_capturar=lambda: captura_de_imagem.capturar_e_salvar("/imagens"),
+        on_capturar=lambda: captura_de_imagem.capturar_e_salvar("/imagens", motivo="manual"),
+        on_configurar_camera=captura_de_imagem.configurar_agendamento,
     )
+
+    if captura_de_imagem.captura_automatica_pendente():
+        captura_de_imagem.capturar_e_salvar("/imagens", motivo="automatico")
 
 
 def executar():
@@ -204,8 +208,6 @@ def executar():
     # Evita reset por watchdog durante bootstrap de rede/cloud (pode bloquear).
     bootstrap()
     wdt = setup_watchdog()
-
-    ultimo_time_lapse_dia = None
 
     while True:
         try:
@@ -215,11 +217,6 @@ def executar():
             wifi.garantir_conectividade()
             ciclo_telemetria_e_automacao()
 
-            # Captura diária de imagem (time-lapse)
-            dia_atual = sincronizar_horario.dia_atual_str()
-            if dia_atual and dia_atual != ultimo_time_lapse_dia:
-                captura_de_imagem.capturar_e_salvar("/imagens")
-                ultimo_time_lapse_dia = dia_atual
 
         except Exception as exc:
             print("[ERRO] loop principal:", exc)

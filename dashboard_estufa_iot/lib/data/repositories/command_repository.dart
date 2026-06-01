@@ -7,15 +7,17 @@ class CommandRepository {
   final FirebaseFirestore _firestore;
   final Uuid _uuid;
 
-  CommandRepository(FirebaseFirestore watch, {FirebaseFirestore? firestore, Uuid? uuid})
-      : _firestore = firestore ?? FirebaseFirestore.instance,
-        _uuid = uuid ?? const Uuid();
+  CommandRepository({FirebaseFirestore? firestore, Uuid? uuid})
+    : _firestore = firestore ?? FirebaseFirestore.instance,
+      _uuid = uuid ?? const Uuid();
 
   Future<DocumentReference<Map<String, dynamic>>> sendCommand(
     String deviceId,
     CommandRequest command,
   ) async {
-    final doc = _firestore.collection('devices/$deviceId/commands').doc(_uuid.v4());
+    final doc = _firestore
+        .collection('devices/$deviceId/commands')
+        .doc(_uuid.v4());
     await doc.set({
       ...command.toMap(),
       'created_at': FieldValue.serverTimestamp(),
