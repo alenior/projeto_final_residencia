@@ -3,7 +3,8 @@
 Projeto de prototipação da Estufa IoT com firmware MicroPython no ESP32-S3, integração em nuvem via MQTT + Firebase e dashboard Flutter para monitoramento/controle.
 
 ## Componentes
-- Firmware (`main.py`, `wifi.py`, `sincronizar_horario.py`, `envio_e_recebimento_nuvem.py`, `captura_de_imagem.py`)
+- Firmware MicroPython de referência (`main.py`, `wifi.py`, `sincronizar_horario.py`, `envio_e_recebimento_nuvem.py`, `captura_de_imagem.py`)
+- Firmware Arduino/C++ para ESP32-S3 + OV5640 (`firmware_arduino/`)
 - Firebase Cloud Functions (`functions/`) para:
   - ingestão de eventos MQTT no Firestore
   - despacho de comandos Firestore -> MQTT
@@ -38,6 +39,8 @@ Projeto de prototipação da Estufa IoT com firmware MicroPython no ESP32-S3, in
 - Histórico pesquisável pelo app via Storage e metadados em Firestore.
 
 ### Configuração no ESP32
+> Importante: se o serial mostrar `no module named 'camera'`, o firmware MicroPython gravado no ESP32-S3 não contém driver de câmera. Consulte `CAMERA_SETUP.md` antes de testar pelo app Flutter.
+
 1. Copie `secrets.py.example` para `secrets.py` no dispositivo.
 2. Ajuste Wi-Fi, `MQTT_DEVICE_ID`, `MQTT_NAMESPACE` e broker MQTT.
 3. Configure `CAMERA_PINS` de acordo com a placa ESP32-S3 + OV5640 usada.
@@ -69,9 +72,25 @@ Configuração de agenda:
 }
 ```
 
+
+## Firmware Arduino/C++ para câmera
+
+A câmera OV5640 deve ser testada preferencialmente pelo firmware em `firmware_arduino/`, que usa o core ESP32 da Espressif e `esp_camera.h`. Os arquivos MicroPython permanecem como referência, mas o firmware MicroPython oficial geralmente não inclui o módulo `camera`.
+
+Arquivos principais:
+- `firmware_arduino/firmware_arduino.ino` — entrada principal.
+- `firmware_arduino/config.example.h` — copie para `firmware_arduino/config.h` e preencha Wi-Fi, MQTT, Firebase e pinout da câmera.
+- `firmware_arduino/wifi_manager.*` — Wi-Fi.
+- `firmware_arduino/time_manager.*` — NTP/hora local.
+- `firmware_arduino/mqtt_manager.*` — MQTT e comandos.
+- `firmware_arduino/camera_manager.*` — OV5640, agenda e upload para Firebase.
+- `firmware_arduino/actuators.*` — bomba, lâmpada, ventoinha e leituras básicas.
+
+Consulte `firmware_arduino/README.md` antes do upload pela Arduino IDE.
+
 ## Deploy Cloud Functions
 ### Pré-requisitos
-- Node.js 20+
+- Node.js 22+
 - Firebase CLI (`npm i -g firebase-tools`)
 - Projeto Firebase criado (Firestore e Storage habilitados)
 

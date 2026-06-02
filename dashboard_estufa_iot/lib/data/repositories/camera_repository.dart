@@ -30,6 +30,14 @@ class CameraRepository {
   /// Exemplo: `devices/esp32s3-estufa-001/images/2026-05-28_120000.jpg`.
   String storagePrefix(String deviceId) => 'devices/$deviceId/images';
 
+  /// Tópico MQTT explícito usado pela Cloud Function ao despachar comandos.
+  ///
+  /// Mantemos esse valor no documento do comando para evitar divergência de
+  /// configuração de ambiente em deploys antigos das Functions.
+  String commandTopic(String deviceId, {String namespace = 'embarcatech2026'}) {
+    return 'estufa/$namespace/$deviceId/comandos';
+  }
+
   DocumentReference<Map<String, dynamic>> _scheduleRef(String deviceId) {
     return _firestore.doc('devices/$deviceId/settings/camera');
   }
@@ -94,6 +102,7 @@ class CameraRepository {
         comando: 'capturar',
         status: true,
         origem: 'flutter_camera_card',
+        topic: commandTopic(deviceId),
         extraPayload: {'reason': reason},
       ),
     );
@@ -112,6 +121,7 @@ class CameraRepository {
         comando: 'configurar_camera',
         status: schedule.enabled,
         origem: 'flutter_camera_card',
+        topic: commandTopic(deviceId),
         extraPayload: schedule.toCommandPayload(),
       ),
     );
