@@ -19,6 +19,8 @@ function mqttClient() {
     username: MQTT_USERNAME,
     password: MQTT_PASSWORD,
     clean: true,
+    clientId: `firebase-functions-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    protocolVersion: 4,
     reconnectPeriod: 0,
   });
 }
@@ -42,12 +44,12 @@ function copyDefinedFields(source, target, fieldNames) {
   }
 }
 
-exports.health = onRequest(async (req, res) => {
+exports.health = onRequest({ invoker: 'public' }, async (req, res) => {
   res.status(200).json({ ok: true, service: 'estufa-functions' });
 });
 
 // HTTP ingestion endpoint: can be called by app/backend/automation for historical writes.
-exports.ingestMqttEvent = onRequest(async (req, res) => {
+exports.ingestMqttEvent = onRequest({ invoker: 'public' }, async (req, res) => {
   try {
     const body = req.body || {};
     const namespace = body.namespace || DEFAULT_NAMESPACE;
@@ -79,7 +81,7 @@ exports.ingestMqttEvent = onRequest(async (req, res) => {
 
 // ESP32 -> HTTPS -> Firebase Storage + Firestore metadata.
 // Aceita JSON base64 ou corpo binario image/jpeg. No modo binario, envie headers x-device-id, x-namespace, x-filename, x-reason e x-captured-at.
-exports.uploadCameraImage = onRequest({ timeoutSeconds: 60, memory: '512Mi' }, async (req, res) => {
+exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, memory: '512Mi' }, async (req, res) => {
   try {
     if (req.method !== 'POST') {
       return res.status(405).json({ ok: false, error: 'Use POST' });
@@ -200,7 +202,7 @@ exports.dispatchCommandToMqtt = onDocumentCreated('devices/{deviceId}/commands/{
 
   await new Promise((resolve, reject) => {
     client.on('connect', () => {
-      client.publish(topic, JSON.stringify(payload), { qos: 0 }, (err) => {
+      client.publish(topic, JSON.stringify(payload), { qos: 1, retain: false }, (err) => {
         client.end(true);
         if (err) return reject(err);
         resolve();

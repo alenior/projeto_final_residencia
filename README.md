@@ -141,3 +141,21 @@ Para gerar `firebase_options.dart`, entre em `dashboard_estufa_iot/` e execute `
 - Migrar para broker MQTT autenticado/TLS em produção.
 - Alimentar a OV5640 e atuadores com fonte adequada; não alimentar relés, bomba, ventoinha ou iluminação diretamente pelo 3V3 do ESP32.
 - Usar transistores/MOSFETs, diodos de flyback e fontes separadas/aterramento comum conforme a carga de cada atuador.
+
+
+### HTTP 403 no upload da câmera
+
+Se o ESP32 mostrar `HTTP 403` com HTML `Forbidden` ao chamar `uploadCameraImage`, a requisição provavelmente foi bloqueada antes de entrar no código da Function por permissão de invocação do Cloud Run/Functions v2. As Functions HTTP deste projeto usam `invoker: 'public'`; após alterar esse ponto, faça novo deploy das Functions. O token `CAMERA_UPLOAD_TOKEN` continua sendo validado dentro da Function para rejeitar uploads não autorizados.
+
+### Observação sobre deploy das Functions
+
+O projeto versiona `firebase.json` com `source=functions`, `codebase=default` e runtime `nodejs22` para evitar que o Firebase CLI use configurações locais antigas ou inconsistentes. Antes de reenviar as Functions, atualize as dependências no diretório `functions/`:
+
+```bash
+cd functions
+npm install
+cd ..
+firebase deploy --only functions --debug
+```
+
+Se o deploy falhar apenas com mensagens genéricas como `Failed to update function`, execute com `--debug` e verifique no log detalhado se há erro de permissão, build ou runtime.
