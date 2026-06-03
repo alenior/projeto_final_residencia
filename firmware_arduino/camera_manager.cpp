@@ -8,6 +8,13 @@
 #include <WiFiClientSecure.h>
 #include <esp_camera.h>
 
+#ifndef CAMERA_CAPTURE_RETRY_COUNT
+#define CAMERA_CAPTURE_RETRY_COUNT 3
+#endif
+#ifndef CAMERA_CAPTURE_RETRY_DELAY_MS
+#define CAMERA_CAPTURE_RETRY_DELAY_MS 700UL
+#endif
+
 namespace
 {
     Preferences prefs;
@@ -67,6 +74,14 @@ namespace
         prefs.putUChar("interval", scheduleConfig.intervalHours);
         prefs.end();
     }
+
+    void resetCameraDriver(const char *motivo)
+    {
+        Serial.printf("[CAMERA][RECOVERY] Reinicializando driver: %s\n", motivo);
+        esp_camera_deinit();
+        cameraReady = false;
+        delay(250);
+    }
 }
 
 void setupCameraManager()
@@ -91,6 +106,15 @@ bool initCamera()
         return false;
     }
 
+    const bool hasPsram = psramFound();
+    Serial.printf("[CAMERA][CFG] psram=%s frame_size=%d quality=%d fb_count=%d xclk=%u retry=%d\n",
+                  hasPsram ? "true" : "false",
+                  static_cast<int>(CAMERA_FRAME_SIZE),
+                  CAMERA_JPEG_QUALITY,
+                  CAMERA_FB_COUNT,
+                  static_cast<unsigned>(CAMERA_XCLK_FREQ_HZ),
+                  CAMERA_CAPTURE_RETRY_COUNT);
+
     camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
@@ -114,8 +138,8 @@ bool initCamera()
     config.pixel_format = PIXFORMAT_JPEG;
     config.frame_size = CAMERA_FRAME_SIZE;
     config.jpeg_quality = CAMERA_JPEG_QUALITY;
-    config.fb_count = CAMERA_FB_COUNT;
-    config.fb_location = CAMERA_FB_IN_PSRAM;
+    config.fb_count = hasPsram ? CAMERA_FB_COUNT : 1;
+    config.fb_location = hasPsram ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
     config.grab_mode = CAMERA_GRAB_LATEST;
 
     esp_err_t err = esp_camera_init(&config);
@@ -126,8 +150,23 @@ bool initCamera()
         return false;
     }
 
+    sensor_t *sensor = esp_camera_sensor_get();
+    if (sensor == nullptr)
+    {
+        Serial.println("[CAMERA][WARN] esp_camera_sensor_get retornou nulo apos init.");
+    }
+    else
+    {
+        Serial.printf("[CAMERA] Sensor detectado PID=0x%04x VER=0x%02x MID=0x%02x%02x\n",
+                      sensor->id.PID,
+                      sensor->id.VER,
+                      sensor->id.MIDH,
+                      sensor->id.MIDL);
+    }
+
     cameraReady = true;
     Serial.println("[CAMERA] Inicializada com esp32-camera.");
+    delay(300);
     return true;
 }
 
@@ -141,10 +180,35 @@ bool captureAndUpload(const char *reason)
         return false;
     }
 
-    camera_fb_t *fb = esp_camera_fb_get();
-    if (fb == nullptr)
+    camera_fb_t *fb = nullptr;
+    for (int attempt = 1; attempt <= CAMERA_CAPTURE_RETRY_COUNT; attempt++)
     {
-        Serial.println("[CAMERA][ERRO] esp_camera_fb_get retornou nulo.");
+        fb = esp_camera_fb_get();
+        if (fb != nullptr && fb->len > 0)
+            break;
+
+        if (fb != nullptr)
+        {
+            Serial.printf("[CAMERA][WARN] frame vazio na tentativa %d/%d.\n", attempt, CAMERA_CAPTURE_RETRY_COUNT);
+            esp_camera_fb_return(fb);
+            fb = nullptr;
+        }
+        else
+        {
+            Serial.printf("[CAMERA][WARN] esp_camera_fb_get nulo na tentativa %d/%d.\n", attempt, CAMERA_CAPTURE_RETRY_COUNT);
+        }
+
+        if (attempt == 1 && CAMERA_CAPTURE_RETRY_COUNT > 1)
+        {
+            resetCameraDriver("fb_get nulo/vazio");
+            initCamera();
+        }
+        delay(CAMERA_CAPTURE_RETRY_DELAY_MS);
+    }
+
+    if (fb == nullptr || fb->len == 0)
+    {
+        Serial.println("[CAMERA][ERRO] Falha ao capturar frame apos retentativas. Verifique pinout, alimentacao, XCLK, PSRAM e resolucao.");
         return false;
     }
 

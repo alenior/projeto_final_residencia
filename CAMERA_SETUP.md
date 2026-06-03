@@ -78,6 +78,19 @@ Resultado esperado quando o firmware tem driver e a câmera está conectada corr
 
 Se aparecer `camera_indisponivel`, revise firmware, pinout, PSRAM e alimentação.
 
+
+## Diagnóstico quando `esp_camera_fb_get` retorna nulo
+
+Se o monitor serial mostrar `esp_camera_init` bem-sucedido, mas a captura falhar com `esp_camera_fb_get retornou nulo` ou `Falha ao capturar frame apos retentativas`, o problema normalmente está no lado físico/configuração da câmera, não no Flutter/Firebase. Verifique, nesta ordem:
+
+1. Pinout real da placa/câmera: D0-D7, XCLK, PCLK, VSYNC, HREF, SIOD/SDA e SIOC/SCL devem corresponder exatamente ao módulo usado.
+2. Alimentação: a OV5640 deve ter 3V3 estável, GND comum e fios curtos; instabilidade pode permitir `esp_camera_init`, mas impedir frame válido.
+3. PSRAM habilitada na Arduino IDE e frame size inicial moderado (`FRAMESIZE_VGA` ou `FRAMESIZE_SVGA`).
+4. Frequência XCLK: se persistir, teste `CAMERA_XCLK_FREQ_HZ 10000000` em `firmware_arduino/config.h`.
+5. Cabo/conector flat e orientação do módulo, especialmente em placas ESP32-S3 com câmera separada.
+
+O firmware Arduino registra o PID do sensor, parâmetros de câmera, tentativas de captura e reinicialização do driver para facilitar essa análise.
+
 ## Boas práticas elétricas
 
 - Não alimente câmera, relés, bomba, lâmpada ou ventoinha a partir do 3V3 do ESP32 se a corrente total exceder a capacidade da placa.
