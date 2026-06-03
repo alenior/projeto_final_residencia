@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -94,6 +96,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
             const SizedBox(height: 16),
             _ImageHistorySection(
               imagesFuture: _imagesFuture!,
+              loadImageBytes: repo.loadImageBytes,
               onRetry: () => _refreshImages(deviceId),
             ),
           ],
@@ -161,7 +164,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
                     ),
                   ),
                   DropdownButtonFormField<int>(
-                    initialValue: draft.intervalHours,
+                    value: draft.intervalHours,
                     decoration: const InputDecoration(
                       labelText: 'Periodicidade',
                       border: OutlineInputBorder(),
@@ -316,10 +319,12 @@ class _CameraScheduleSummary extends StatelessWidget {
 
 class _ImageHistorySection extends StatelessWidget {
   final Future<List<CameraItem>> imagesFuture;
+  final Future<Uint8List?> Function(CameraItem item) loadImageBytes;
   final VoidCallback onRetry;
 
   const _ImageHistorySection({
     required this.imagesFuture,
+    required this.loadImageBytes,
     required this.onRetry,
   });
 
@@ -416,7 +421,10 @@ class _ImageHistorySection extends StatelessWidget {
                   ),
                   itemCount: images.length,
                   itemBuilder: (context, index) {
-                    return _CameraImageTile(item: images[index]);
+                    return _CameraImageTile(
+                      item: images[index],
+                      loadImageBytes: loadImageBytes,
+                    );
                   },
                 );
               },
@@ -428,36 +436,60 @@ class _ImageHistorySection extends StatelessWidget {
   }
 }
 
-class _CameraImageTile extends StatelessWidget {
+class _CameraImageTile extends StatefulWidget {
   final CameraItem item;
+  final Future<Uint8List?> Function(CameraItem item) loadImageBytes;
 
-  const _CameraImageTile({required this.item});
+  const _CameraImageTile({required this.item, required this.loadImageBytes});
+
+  @override
+  State<_CameraImageTile> createState() => _CameraImageTileState();
+}
+
+class _CameraImageTileState extends State<_CameraImageTile> {
+  late Future<Uint8List?> _imageBytesFuture;
+
+  CameraItem get item => widget.item;
+
+  @override
+  void initState() {
+    super.initState();
+    _imageBytesFuture = widget.loadImageBytes(widget.item);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CameraImageTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.path != widget.item.path) {
+      _imageBytesFuture = widget.loadImageBytes(widget.item);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: item.hasPreview ? () => _openPreview(context, item) : null,
+        onTap: () => _openPreview(context, item),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: item.hasPreview
-                  ? Image.network(
-                      item.downloadUrl!,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const Center(child: CircularProgressIndicator());
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return const _ImagePlaceholder(
-                          label: 'Erro ao carregar',
-                        );
-                      },
-                    )
-                  : const _ImagePlaceholder(label: 'Sem prévia'),
+              child: FutureBuilder<Uint8List?>(
+                future: _imageBytesFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final bytes = snapshot.data;
+                  if (snapshot.hasError || bytes == null || bytes.isEmpty) {
+                    return const _ImagePlaceholder(label: 'Erro ao carregar');
+                  }
+
+                  return Image.memory(bytes, fit: BoxFit.cover);
+                },
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(8),
@@ -503,7 +535,21 @@ class _CameraImageTile extends StatelessWidget {
               ),
               Flexible(
                 child: InteractiveViewer(
-                  child: Image.network(item.downloadUrl!, fit: BoxFit.contain),
+                  child: FutureBuilder<Uint8List?>(
+                    future: _imageBytesFuture,
+                    builder: (context, snapshot) {
+                      final bytes = snapshot.data;
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (snapshot.hasError || bytes == null || bytes.isEmpty) {
+                        return const _ImagePlaceholder(
+                          label: 'Erro ao carregar',
+                        );
+                      }
+                      return Image.memory(bytes, fit: BoxFit.contain);
+                    },
+                  ),
                 ),
               ),
               Padding(

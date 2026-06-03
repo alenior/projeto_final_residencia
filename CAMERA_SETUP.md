@@ -92,6 +92,11 @@ Se o monitor serial mostrar `esp_camera_init` bem-sucedido, mas a captura falhar
 
 O firmware Arduino registra o PID do sensor, pinout configurado, parâmetros de câmera, tentativas de captura e reinicialização do driver para facilitar essa análise.
 
+
+## Reinicialização após captura/upload
+
+Se a captura mostra `Captura OK`, mas o ESP32-S3 reinicia durante ou logo após o upload HTTPS, teste manter `CAMERA_COPY_FRAME_BEFORE_UPLOAD true` e `CAMERA_DEINIT_BEFORE_UPLOAD true`. Com isso, o firmware copia o JPEG para um buffer próprio, libera o framebuffer da câmera e desinicializa o driver antes da conexão TLS/HTTP, reduzindo consumo e disputa de memória entre câmera, Wi-Fi e TLS. Se ainda reiniciar, verifique alimentação: câmera + Wi-Fi ativo podem causar queda momentânea de tensão mesmo quando a captura isolada funciona.
+
 ## Boas práticas elétricas
 
 - Não alimente câmera, relés, bomba, lâmpada ou ventoinha a partir do 3V3 do ESP32 se a corrente total exceder a capacidade da placa.

@@ -135,6 +135,11 @@ Dependências usadas pelos repositórios/modelos do dashboard:
 
 Para gerar `firebase_options.dart`, entre em `dashboard_estufa_iot/` e execute `flutterfire configure` após instalar a Firebase CLI oficial e o FlutterFire CLI. O arquivo é específico do projeto Firebase/local e está no `.gitignore`.
 
+
+### Visualização de imagens no Flutter
+
+A tela de câmera carrega a prévia usando bytes obtidos pelo SDK do Firebase Storage, em vez de depender diretamente de `Image.network(downloadUrl)`. Isso evita falhas comuns no Flutter Web/Chrome em que uma URL HTTPS do Storage aparece no app como `statusCode: 0` por configuração de CORS/token.
+
 ## Segurança e boas práticas
 - Não versionar segredos (`secrets.py`, `.env`, chaves de serviço, `firebase_options.dart`).
 - Usar token de upload da câmera (`CAMERA_UPLOAD_TOKEN`) enquanto o protótipo não tiver autenticação mútua mais forte.

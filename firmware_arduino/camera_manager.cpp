@@ -4,6 +4,7 @@
 #include "wifi_manager.h"
 
 #include <HTTPClient.h>
+#include <cstring>
 #include <Preferences.h>
 #include <WiFiClientSecure.h>
 #include <esp_camera.h>
@@ -13,6 +14,15 @@
 #endif
 #ifndef CAMERA_USE_PSRAM_FRAMEBUFFER
 #define CAMERA_USE_PSRAM_FRAMEBUFFER true
+#endif
+#ifndef CAMERA_COPY_FRAME_BEFORE_UPLOAD
+#define CAMERA_COPY_FRAME_BEFORE_UPLOAD true
+#endif
+#ifndef CAMERA_DEINIT_BEFORE_UPLOAD
+#define CAMERA_DEINIT_BEFORE_UPLOAD true
+#endif
+#ifndef CAMERA_HTTP_TIMEOUT_MS
+#define CAMERA_HTTP_TIMEOUT_MS 20000
 #endif
 #ifndef CAMERA_CAPTURE_RETRY_COUNT
 #define CAMERA_CAPTURE_RETRY_COUNT 3
@@ -98,6 +108,15 @@ namespace
         delay(30);
     }
 
+    void deinitCameraDriver(const char *motivo)
+    {
+        if (!cameraReady)
+            return;
+        Serial.printf("[CAMERA] Desinicializando driver: %s\n", motivo);
+        esp_camera_deinit();
+        cameraReady = false;
+    }
+
     void resetCameraDriver(const char *motivo)
     {
         Serial.printf("[CAMERA][RECOVERY] Reinicializando driver: %s\n", motivo);
@@ -134,7 +153,7 @@ bool initCamera()
 
     const bool hasPsram = psramFound();
     const bool usePsramFramebuffer = hasPsram && CAMERA_USE_PSRAM_FRAMEBUFFER;
-    Serial.printf("[CAMERA][CFG] psram=%s fb_location=%s frame_size=%d quality=%d fb_count=%d xclk=%u grab_mode=%d retry=%d\n",
+    Serial.printf("[CAMERA][CFG] psram=%s fb_location=%s frame_size=%d quality=%d fb_count=%d xclk=%u grab_mode=%d retry=%d copy_before_upload=%s deinit_before_upload=%s\n",
                   hasPsram ? "true" : "false",
                   usePsramFramebuffer ? "PSRAM" : "DRAM",
                   static_cast<int>(CAMERA_FRAME_SIZE),
@@ -142,7 +161,9 @@ bool initCamera()
                   CAMERA_FB_COUNT,
                   static_cast<unsigned>(CAMERA_XCLK_FREQ_HZ),
                   static_cast<int>(CAMERA_GRAB_MODE),
-                  CAMERA_CAPTURE_RETRY_COUNT);
+                  CAMERA_CAPTURE_RETRY_COUNT,
+                  CAMERA_COPY_FRAME_BEFORE_UPLOAD ? "true" : "false",
+                  CAMERA_DEINIT_BEFORE_UPLOAD ? "true" : "false");
     Serial.printf("[CAMERA][PINS] pwdn=%d reset=%d xclk=%d siod=%d sioc=%d d0=%d d1=%d d2=%d d3=%d d4=%d d5=%d d6=%d d7=%d vsync=%d href=%d pclk=%d\n",
                   CAMERA_PIN_PWDN, CAMERA_PIN_RESET, CAMERA_PIN_XCLK, CAMERA_PIN_SIOD, CAMERA_PIN_SIOC,
                   CAMERA_PIN_D0, CAMERA_PIN_D1, CAMERA_PIN_D2, CAMERA_PIN_D3, CAMERA_PIN_D4, CAMERA_PIN_D5,
@@ -247,19 +268,58 @@ bool captureAndUpload(const char *reason)
         return false;
     }
 
-    Serial.printf("[CAMERA] Captura OK: %u bytes (%s)\n", static_cast<unsigned>(fb->len), reason);
+    Serial.printf("[CAMERA] Captura OK: %u bytes (%s) heap=%u psram=%u\n",
+                  static_cast<unsigned>(fb->len),
+                  reason,
+                  ESP.getFreeHeap(),
+                  ESP.getFreePsram());
 
     const String filename = String("ov5640_") + nowFileTimestamp() + ".jpg";
     const String capturedAt = nowIso8601();
+    const size_t imageLength = fb->len;
+    uint8_t *copiedImage = nullptr;
+    const uint8_t *imageData = fb->buf;
+
+    if (CAMERA_COPY_FRAME_BEFORE_UPLOAD)
+    {
+        copiedImage = static_cast<uint8_t *>(ps_malloc(imageLength));
+        if (copiedImage == nullptr)
+            copiedImage = static_cast<uint8_t *>(malloc(imageLength));
+
+        if (copiedImage != nullptr)
+        {
+            memcpy(copiedImage, fb->buf, imageLength);
+            imageData = copiedImage;
+            esp_camera_fb_return(fb);
+            fb = nullptr;
+            Serial.printf("[CAMERA] Frame copiado para buffer de upload: bytes=%u heap=%u psram=%u\n",
+                          static_cast<unsigned>(imageLength),
+                          ESP.getFreeHeap(),
+                          ESP.getFreePsram());
+            if (CAMERA_DEINIT_BEFORE_UPLOAD)
+            {
+                deinitCameraDriver("frame copiado antes do upload");
+            }
+        }
+        else
+        {
+            Serial.println("[CAMERA][WARN] Sem memoria para copiar frame; upload usara framebuffer ativo.");
+        }
+    }
 
     WiFiClientSecure client;
     client.setInsecure(); // Prototipo: substitua por CA raiz em producao.
 
     HTTPClient http;
+    http.setReuse(false);
+    http.setTimeout(CAMERA_HTTP_TIMEOUT_MS);
     if (!http.begin(client, CAMERA_UPLOAD_URL))
     {
         Serial.println("[CAMERA][UPLOAD][ERRO] http.begin falhou.");
-        esp_camera_fb_return(fb);
+        if (fb != nullptr)
+            esp_camera_fb_return(fb);
+        if (copiedImage != nullptr)
+            free(copiedImage);
         return false;
     }
 
@@ -271,15 +331,24 @@ bool captureAndUpload(const char *reason)
     http.addHeader("x-reason", reason);
     http.addHeader("x-captured-at", capturedAt);
 
-    Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u\n",
+    Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u heap=%u psram=%u\n",
                   filename.c_str(),
-                  static_cast<unsigned>(fb->len));
-    const int status = http.POST(fb->buf, fb->len);
+                  static_cast<unsigned>(imageLength),
+                  ESP.getFreeHeap(),
+                  ESP.getFreePsram());
+    const int status = http.POST(const_cast<uint8_t *>(imageData), imageLength);
     const String response = http.getString();
     http.end();
-    esp_camera_fb_return(fb);
+    if (fb != nullptr)
+        esp_camera_fb_return(fb);
+    if (copiedImage != nullptr)
+        free(copiedImage);
 
-    Serial.printf("[CAMERA][UPLOAD] HTTP %d resposta=%s\n", status, response.substring(0, 180).c_str());
+    Serial.printf("[CAMERA][UPLOAD] HTTP %d resposta=%s heap=%u psram=%u\n",
+                  status,
+                  response.substring(0, 180).c_str(),
+                  ESP.getFreeHeap(),
+                  ESP.getFreePsram());
     return status >= 200 && status < 300;
 }
 

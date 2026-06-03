@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
@@ -69,6 +71,17 @@ class CameraRepository {
     });
 
     return items;
+  }
+
+  /// Baixa bytes da imagem usando o SDK do Firebase Storage.
+  ///
+  /// Isso evita depender de `Image.network(downloadUrl)` no Flutter Web, onde
+  /// algumas configurações de CORS/token podem aparecer como `statusCode: 0`.
+  Future<Uint8List?> loadImageBytes(
+    CameraItem item, {
+    int maxSizeBytes = 10 * 1024 * 1024,
+  }) {
+    return _storage.ref(item.path).getData(maxSizeBytes);
   }
 
   /// Observa metadados de imagens gravados pela Cloud Function `uploadCameraImage`.
