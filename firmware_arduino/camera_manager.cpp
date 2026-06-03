@@ -8,6 +8,12 @@
 #include <WiFiClientSecure.h>
 #include <esp_camera.h>
 
+#ifndef CAMERA_GRAB_MODE
+#define CAMERA_GRAB_MODE CAMERA_GRAB_WHEN_EMPTY
+#endif
+#ifndef CAMERA_USE_PSRAM_FRAMEBUFFER
+#define CAMERA_USE_PSRAM_FRAMEBUFFER true
+#endif
 #ifndef CAMERA_CAPTURE_RETRY_COUNT
 #define CAMERA_CAPTURE_RETRY_COUNT 3
 #endif
@@ -75,12 +81,30 @@ namespace
         prefs.end();
     }
 
+    void prepareCameraControlPins()
+    {
+        if (CAMERA_PIN_PWDN >= 0)
+        {
+            pinMode(CAMERA_PIN_PWDN, OUTPUT);
+            digitalWrite(CAMERA_PIN_PWDN, LOW);
+        }
+        if (CAMERA_PIN_RESET >= 0)
+        {
+            pinMode(CAMERA_PIN_RESET, OUTPUT);
+            digitalWrite(CAMERA_PIN_RESET, LOW);
+            delay(20);
+            digitalWrite(CAMERA_PIN_RESET, HIGH);
+        }
+        delay(30);
+    }
+
     void resetCameraDriver(const char *motivo)
     {
         Serial.printf("[CAMERA][RECOVERY] Reinicializando driver: %s\n", motivo);
         esp_camera_deinit();
         cameraReady = false;
         delay(250);
+        prepareCameraControlPins();
     }
 }
 
@@ -106,14 +130,23 @@ bool initCamera()
         return false;
     }
 
+    prepareCameraControlPins();
+
     const bool hasPsram = psramFound();
-    Serial.printf("[CAMERA][CFG] psram=%s frame_size=%d quality=%d fb_count=%d xclk=%u retry=%d\n",
+    const bool usePsramFramebuffer = hasPsram && CAMERA_USE_PSRAM_FRAMEBUFFER;
+    Serial.printf("[CAMERA][CFG] psram=%s fb_location=%s frame_size=%d quality=%d fb_count=%d xclk=%u grab_mode=%d retry=%d\n",
                   hasPsram ? "true" : "false",
+                  usePsramFramebuffer ? "PSRAM" : "DRAM",
                   static_cast<int>(CAMERA_FRAME_SIZE),
                   CAMERA_JPEG_QUALITY,
                   CAMERA_FB_COUNT,
                   static_cast<unsigned>(CAMERA_XCLK_FREQ_HZ),
+                  static_cast<int>(CAMERA_GRAB_MODE),
                   CAMERA_CAPTURE_RETRY_COUNT);
+    Serial.printf("[CAMERA][PINS] pwdn=%d reset=%d xclk=%d siod=%d sioc=%d d0=%d d1=%d d2=%d d3=%d d4=%d d5=%d d6=%d d7=%d vsync=%d href=%d pclk=%d\n",
+                  CAMERA_PIN_PWDN, CAMERA_PIN_RESET, CAMERA_PIN_XCLK, CAMERA_PIN_SIOD, CAMERA_PIN_SIOC,
+                  CAMERA_PIN_D0, CAMERA_PIN_D1, CAMERA_PIN_D2, CAMERA_PIN_D3, CAMERA_PIN_D4, CAMERA_PIN_D5,
+                  CAMERA_PIN_D6, CAMERA_PIN_D7, CAMERA_PIN_VSYNC, CAMERA_PIN_HREF, CAMERA_PIN_PCLK);
 
     camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
@@ -139,8 +172,8 @@ bool initCamera()
     config.frame_size = CAMERA_FRAME_SIZE;
     config.jpeg_quality = CAMERA_JPEG_QUALITY;
     config.fb_count = hasPsram ? CAMERA_FB_COUNT : 1;
-    config.fb_location = hasPsram ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
-    config.grab_mode = CAMERA_GRAB_LATEST;
+    config.fb_location = usePsramFramebuffer ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
+    config.grab_mode = CAMERA_GRAB_MODE;
 
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK)
@@ -162,6 +195,8 @@ bool initCamera()
                       sensor->id.VER,
                       sensor->id.MIDH,
                       sensor->id.MIDL);
+        sensor->set_framesize(sensor, CAMERA_FRAME_SIZE);
+        sensor->set_quality(sensor, CAMERA_JPEG_QUALITY);
     }
 
     cameraReady = true;

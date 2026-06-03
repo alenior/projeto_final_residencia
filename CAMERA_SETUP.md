@@ -85,11 +85,12 @@ Se o monitor serial mostrar `esp_camera_init` bem-sucedido, mas a captura falhar
 
 1. Pinout real da placa/câmera: D0-D7, XCLK, PCLK, VSYNC, HREF, SIOD/SDA e SIOC/SCL devem corresponder exatamente ao módulo usado.
 2. Alimentação: a OV5640 deve ter 3V3 estável, GND comum e fios curtos; instabilidade pode permitir `esp_camera_init`, mas impedir frame válido.
-3. PSRAM habilitada na Arduino IDE e frame size inicial moderado (`FRAMESIZE_VGA` ou `FRAMESIZE_SVGA`).
+3. PSRAM habilitada na Arduino IDE e frame size inicial moderado (`FRAMESIZE_QVGA` ou `FRAMESIZE_VGA`).
 4. Frequência XCLK: se persistir, teste `CAMERA_XCLK_FREQ_HZ 10000000` em `firmware_arduino/config.h`.
-5. Cabo/conector flat e orientação do módulo, especialmente em placas ESP32-S3 com câmera separada.
+5. Modo de captura: use `#define CAMERA_GRAB_MODE CAMERA_GRAB_WHEN_EMPTY`; se ainda falhar, teste também `#define CAMERA_USE_PSRAM_FRAMEBUFFER false` com `FRAMESIZE_QVGA`.
+6. Cabo/conector flat e orientação do módulo, especialmente em placas ESP32-S3 com câmera separada.
 
-O firmware Arduino registra o PID do sensor, parâmetros de câmera, tentativas de captura e reinicialização do driver para facilitar essa análise.
+O firmware Arduino registra o PID do sensor, pinout configurado, parâmetros de câmera, tentativas de captura e reinicialização do driver para facilitar essa análise.
 
 ## Boas práticas elétricas
 
