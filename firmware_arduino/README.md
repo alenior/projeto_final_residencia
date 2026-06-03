@@ -63,5 +63,5 @@ Comandos esperados:
 ## Observações importantes
 
 - Os arquivos MicroPython permanecem no repositório como referência/protótipo, mas a câmera OV5640 deve ser testada por este firmware Arduino.
-- O upload atual envia JPEG em base64 para a Function `uploadCameraImage`, mantendo compatibilidade com o backend já criado.
+- O upload atual envia o JPEG como corpo binário (`image/jpeg`) para a Function `uploadCameraImage`, evitando o aumento de memória causado por base64. A Function também mantém compatibilidade com JSON/base64 para testes manuais.
 - Para produção, substitua `WiFiClientSecure::setInsecure()` por validação de certificado CA.

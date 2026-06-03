@@ -7,7 +7,6 @@
 #include <Preferences.h>
 #include <WiFiClientSecure.h>
 #include <esp_camera.h>
-#include <mbedtls/base64.h>
 
 namespace
 {
@@ -67,73 +66,6 @@ namespace
         prefs.putUChar("minute", scheduleConfig.minute);
         prefs.putUChar("interval", scheduleConfig.intervalHours);
         prefs.end();
-    }
-
-    bool encodeBase64(const uint8_t *data, size_t length, String &out)
-    {
-        // Algumas versões do mbedTLS no core ESP32 declaram o ponteiro de entrada
-        // como uint8_t* mesmo sem modificar o buffer; por isso usamos const_cast aqui.
-        uint8_t *input = const_cast<uint8_t *>(data);
-        size_t encodedLength = 0;
-        int rc = mbedtls_base64_encode(nullptr, 0, &encodedLength, input, length);
-        if (rc != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL)
-        {
-            Serial.printf("[CAMERA][B64][ERRO] calculo tamanho rc=%d\n", rc);
-            return false;
-        }
-
-        uint8_t *buffer = static_cast<uint8_t *>(ps_malloc(encodedLength + 1));
-        if (buffer == nullptr)
-            buffer = static_cast<uint8_t *>(malloc(encodedLength + 1));
-        if (buffer == nullptr)
-        {
-            Serial.printf("[CAMERA][B64][ERRO] sem memoria para %u bytes\n", static_cast<unsigned>(encodedLength + 1));
-            return false;
-        }
-
-        rc = mbedtls_base64_encode(buffer, encodedLength + 1, &encodedLength, input, length);
-        if (rc != 0)
-        {
-            Serial.printf("[CAMERA][B64][ERRO] encode rc=%d\n", rc);
-            free(buffer);
-            return false;
-        }
-
-        buffer[encodedLength] = '\0';
-        out = reinterpret_cast<char *>(buffer);
-        free(buffer);
-        return true;
-    }
-
-    String jsonEscape(const String &value)
-    {
-        String escaped;
-        escaped.reserve(value.length() + 8);
-        for (size_t i = 0; i < value.length(); i++)
-        {
-            const char c = value.charAt(i);
-            if (c == '"' || c == '\\')
-                escaped += '\\';
-            escaped += c;
-        }
-        return escaped;
-    }
-
-    String buildUploadJson(const String &filename, const String &base64Image, const char *reason)
-    {
-        String payload;
-        payload.reserve(base64Image.length() + 512);
-        payload += '{';
-        payload += "\"namespace\":\"" MQTT_NAMESPACE "\",";
-        payload += "\"deviceId\":\"" DEVICE_ID "\",";
-        payload += "\"filename\":\"" + jsonEscape(filename) + "\",";
-        payload += "\"contentType\":\"" CAMERA_CONTENT_TYPE "\",";
-        payload += "\"reason\":\"" + jsonEscape(String(reason)) + "\",";
-        payload += "\"capturedAt\":\"" + jsonEscape(nowIso8601()) + "\",";
-        payload += "\"metadata\":{\"firmware\":\"arduino\",\"ip\":\"" + jsonEscape(localIpString()) + "\"},";
-        payload += "\"imageBase64\":\"" + base64Image + "\"";
-        payload += '}';
-        return payload;
     }
 }
 
@@ -218,14 +150,8 @@ bool captureAndUpload(const char *reason)
 
     Serial.printf("[CAMERA] Captura OK: %u bytes (%s)\n", static_cast<unsigned>(fb->len), reason);
 
-    String base64Image;
-    const bool encoded = encodeBase64(fb->buf, fb->len, base64Image);
-    esp_camera_fb_return(fb);
-    if (!encoded)
-        return false;
-
     const String filename = String("ov5640_") + nowFileTimestamp() + ".jpg";
-    const String body = buildUploadJson(filename, base64Image, reason);
+    const String capturedAt = nowIso8601();
 
     WiFiClientSecure client;
     client.setInsecure(); // Prototipo: substitua por CA raiz em producao.
@@ -234,14 +160,25 @@ bool captureAndUpload(const char *reason)
     if (!http.begin(client, CAMERA_UPLOAD_URL))
     {
         Serial.println("[CAMERA][UPLOAD][ERRO] http.begin falhou.");
+        esp_camera_fb_return(fb);
         return false;
     }
 
-    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Content-Type", CAMERA_CONTENT_TYPE);
     http.addHeader("x-camera-upload-token", CAMERA_UPLOAD_TOKEN);
-    const int status = http.POST(body);
+    http.addHeader("x-device-id", DEVICE_ID);
+    http.addHeader("x-namespace", MQTT_NAMESPACE);
+    http.addHeader("x-filename", filename);
+    http.addHeader("x-reason", reason);
+    http.addHeader("x-captured-at", capturedAt);
+
+    Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u\n",
+                  filename.c_str(),
+                  static_cast<unsigned>(fb->len));
+    const int status = http.POST(fb->buf, fb->len);
     const String response = http.getString();
     http.end();
+    esp_camera_fb_return(fb);
 
     Serial.printf("[CAMERA][UPLOAD] HTTP %d resposta=%s\n", status, response.substring(0, 180).c_str());
     return status >= 200 && status < 300;

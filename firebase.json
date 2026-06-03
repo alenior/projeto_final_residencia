@@ -9,7 +9,7 @@
     {
       "source": "functions",
       "codebase": "default",
-      "disallowLegacyRuntimeConfig": true,
+      "runtime": "nodejs22",
       "ignore": [
         "node_modules",
         ".git",

@@ -78,7 +78,7 @@ exports.ingestMqttEvent = onRequest(async (req, res) => {
 });
 
 // ESP32 -> HTTPS -> Firebase Storage + Firestore metadata.
-// Espera JSON: { deviceId, namespace, filename, contentType, imageBase64, reason, capturedAt, metadata }
+// Aceita JSON base64 ou corpo binario image/jpeg. No modo binario, envie headers x-device-id, x-namespace, x-filename, x-reason e x-captured-at.
 exports.uploadCameraImage = onRequest({ timeoutSeconds: 60, memory: '512Mi' }, async (req, res) => {
   try {
     if (req.method !== 'POST') {
@@ -90,21 +90,32 @@ exports.uploadCameraImage = onRequest({ timeoutSeconds: 60, memory: '512Mi' }, a
     }
 
     const body = req.body || {};
-    const deviceId = body.deviceId;
-    const namespace = body.namespace || DEFAULT_NAMESPACE;
+    const rawBody = req.rawBody;
+    const isRawImage = rawBody && rawBody.length && !body.imageBase64;
+    const deviceId = body.deviceId || req.get('x-device-id');
+    const namespace = body.namespace || req.get('x-namespace') || DEFAULT_NAMESPACE;
     const imageBase64 = body.imageBase64;
-    const contentType = body.contentType || 'image/jpeg';
-    const filename = safeStorageName(body.filename);
-    const reason = body.reason || 'manual';
+    const contentType = body.contentType || req.get('content-type') || 'image/jpeg';
+    const filename = safeStorageName(body.filename || req.get('x-filename'));
+    const reason = body.reason || req.get('x-reason') || 'manual';
+    const capturedAt = body.capturedAt || req.get('x-captured-at') || null;
     const metadata = body.metadata || {};
 
-    if (!deviceId || !imageBase64) {
-      return res.status(400).json({ ok: false, error: 'deviceId e imageBase64 são obrigatórios' });
+    if (!deviceId) {
+      return res.status(400).json({ ok: false, error: 'deviceId é obrigatório' });
     }
 
-    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    let imageBuffer;
+    if (isRawImage) {
+      imageBuffer = Buffer.from(rawBody);
+    } else if (imageBase64) {
+      imageBuffer = Buffer.from(imageBase64, 'base64');
+    } else {
+      return res.status(400).json({ ok: false, error: 'imageBase64 ou corpo binário image/jpeg é obrigatório' });
+    }
+
     if (!imageBuffer.length) {
-      return res.status(400).json({ ok: false, error: 'imageBase64 vazio ou invalido' });
+      return res.status(400).json({ ok: false, error: 'imagem vazia ou invalida' });
     }
 
     const path = `devices/${deviceId}/images/${filename}`;
@@ -119,7 +130,7 @@ exports.uploadCameraImage = onRequest({ timeoutSeconds: 60, memory: '512Mi' }, a
           deviceId,
           namespace,
           reason,
-          capturedAt: body.capturedAt || '',
+          capturedAt: capturedAt || '',
         },
       },
     });
@@ -133,7 +144,8 @@ exports.uploadCameraImage = onRequest({ timeoutSeconds: 60, memory: '512Mi' }, a
       namespace,
       reason,
       metadata,
-      captured_at_device: body.capturedAt || null,
+      upload_mode: isRawImage ? 'raw_image' : 'base64_json',
+      captured_at_device: capturedAt,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
       source: 'esp32_ov5640',

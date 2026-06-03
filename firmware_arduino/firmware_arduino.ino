@@ -2,6 +2,7 @@
 #include <cstring>
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 
 #include "actuators.h"
 #include "camera_manager.h"
@@ -34,6 +35,8 @@ void handleCommand(JsonObject command)
     const char *action = command["comando"] | "";
     const bool status = command["status"] | true;
 
+    Serial.printf("[CMD] comando=%s status=%s\n", action, status ? "true" : "false");
+
     if (strcmp(action, "irrigar") == 0)
     {
         setPump(status);
@@ -48,6 +51,7 @@ void handleCommand(JsonObject command)
     }
     else if (strcmp(action, "capturar") == 0 && status)
     {
+        Serial.println("[CMD] Acionando captura manual da camera.");
         const bool ok = captureAndUpload("manual");
         publishCameraEvent(String("{\"evento\":\"captura_manual\",\"ok\":") + (ok ? "true" : "false") + "}");
     }
@@ -67,6 +71,7 @@ void setup()
     delay(500);
     Serial.println("\n==================== BOOT ARDUINO ====================");
     Serial.printf("EstufaIoT Arduino firmware device=%s namespace=%s\n", DEVICE_ID, MQTT_NAMESPACE);
+    Serial.printf("Reset reason=%d\n", static_cast<int>(esp_reset_reason()));
     Serial.printf("GPIOs -> bomba:%d lampada:%d pir:%d solo:%d ldr:%d ventoinha:%d\n",
                   PIN_RELE_BOMBA, PIN_RELE_LAMPADA, PIN_PIR, PIN_SOLO_ADC, PIN_LDR_ADC, PIN_VENTOINHA);
     Serial.printf("Heap=%u PSRAM livre=%u\n", ESP.getFreeHeap(), heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
