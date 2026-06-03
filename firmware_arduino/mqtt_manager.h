@@ -10,4 +10,6 @@ void mqttLoop();
 bool publishTelemetry(const String &payloadJson);
 bool publishStatus(bool online);
 bool publishCameraEvent(const String &payloadJson);
+bool isMqttConnected();
+int mqttConnectionState();
 String mqttCommandTopic();

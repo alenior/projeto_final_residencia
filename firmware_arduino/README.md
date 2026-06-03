@@ -60,6 +60,10 @@ Comandos esperados:
 {"comando":"ventilar","status":true}
 ```
 
+## Botão local de teste da câmera
+
+O firmware também pode usar um botão momentâneo em `PIN_BOTAO_CAMERA` para validar captura e upload sem depender do Flutter/MQTT. O padrão é GPIO45 com `INPUT_PULLUP`: ligue um lado do botão ao GPIO45 e o outro ao GND. Como GPIO45 é pino de strapping no ESP32-S3, não mantenha o botão pressionado durante boot/reset. Ao pressionar depois do boot, o Serial Monitor deve exibir `[BOTAO_CAMERA] Captura manual local solicitada.` e seguir com `[CAMERA] Captura OK` / `[CAMERA][UPLOAD] HTTP ...`.
+
 ## Observações importantes
 
 - Os arquivos MicroPython permanecem no repositório como referência/protótipo, mas a câmera OV5640 deve ser testada por este firmware Arduino.

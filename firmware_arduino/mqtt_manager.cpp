@@ -79,11 +79,17 @@ namespace
             return false;
         }
 
-        mqtt.subscribe(mqttCommandTopic().c_str());
-        mqtt.subscribe(topicCommandEnglish().c_str());
-        mqtt.subscribe(topicLegacyCommand().c_str());
-        mqtt.subscribe(topicLegacyCommandEnglish().c_str());
-        mqtt.subscribe(topicGeneralCommand().c_str());
+        const String commandTopic = mqttCommandTopic();
+        const String commandEnglishTopic = topicCommandEnglish();
+        const String legacyCommandTopic = topicLegacyCommand();
+        const String legacyCommandEnglishTopic = topicLegacyCommandEnglish();
+        const String generalCommandTopic = topicGeneralCommand();
+
+        Serial.printf("[MQTT][SUB] %s => %s\n", commandTopic.c_str(), mqtt.subscribe(commandTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", commandEnglishTopic.c_str(), mqtt.subscribe(commandEnglishTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandTopic.c_str(), mqtt.subscribe(legacyCommandTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandEnglishTopic.c_str(), mqtt.subscribe(legacyCommandEnglishTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", generalCommandTopic.c_str(), mqtt.subscribe(generalCommandTopic.c_str()) ? "OK" : "FAIL");
 
         publishStatus(true);
         mqtt.publish(topicTest().c_str(), "{\"evento\":\"boot\",\"firmware\":\"arduino\"}");
@@ -139,6 +145,16 @@ bool publishCameraEvent(const String &payloadJson)
     if (!connectMqtt())
         return false;
     return mqtt.publish(topicCamera().c_str(), payloadJson.c_str());
+}
+
+bool isMqttConnected()
+{
+    return mqtt.connected();
+}
+
+int mqttConnectionState()
+{
+    return mqtt.state();
 }
 
 String mqttCommandTopic()
