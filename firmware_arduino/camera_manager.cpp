@@ -34,9 +34,20 @@
 namespace
 {
     Preferences prefs;
+    Preferences diagPrefs;
     CameraScheduleConfig scheduleConfig;
     bool cameraReady = false;
     String lastAutoCaptureKey;
+
+    void saveCameraDiagnostic(const char *stage, int status = 0)
+    {
+        diagPrefs.begin("camdiag", false);
+        diagPrefs.putString("stage", stage);
+        diagPrefs.putInt("status", status);
+        diagPrefs.putUInt("heap", ESP.getFreeHeap());
+        diagPrefs.putUInt("psram", ESP.getFreePsram());
+        diagPrefs.end();
+    }
 
     uint8_t boundedUInt(int value, int fallback, int minValue, int maxValue)
     {
@@ -47,22 +58,22 @@ namespace
 
     bool jsonBoolOr(JsonObject command, const char *a, const char *b, const char *c, bool fallback)
     {
-        if (command.containsKey(a))
+        if (command[a].is<bool>())
             return command[a].as<bool>();
-        if (command.containsKey(b))
+        if (command[b].is<bool>())
             return command[b].as<bool>();
-        if (command.containsKey(c))
+        if (command[c].is<bool>())
             return command[c].as<bool>();
         return fallback;
     }
 
     int jsonIntOr(JsonObject command, const char *a, const char *b, const char *c, int fallback)
     {
-        if (command.containsKey(a))
+        if (command[a].is<int>())
             return command[a].as<int>();
-        if (command.containsKey(b))
+        if (command[b].is<int>())
             return command[b].as<int>();
-        if (command.containsKey(c))
+        if (command[c].is<int>())
             return command[c].as<int>();
         return fallback;
     }
@@ -125,6 +136,22 @@ namespace
         delay(250);
         prepareCameraControlPins();
     }
+}
+
+void printCameraUploadDiagnostic()
+{
+    diagPrefs.begin("camdiag", true);
+    const String stage = diagPrefs.getString("stage", "nenhum");
+    const int status = diagPrefs.getInt("status", 0);
+    const uint32_t heap = diagPrefs.getUInt("heap", 0);
+    const uint32_t psram = diagPrefs.getUInt("psram", 0);
+    diagPrefs.end();
+
+    Serial.printf("[CAMERA][LAST] stage=%s status=%d heap=%lu psram=%lu\n",
+                  stage.c_str(),
+                  status,
+                  static_cast<unsigned long>(heap),
+                  static_cast<unsigned long>(psram));
 }
 
 void setupCameraManager()
@@ -228,11 +255,16 @@ bool initCamera()
 
 bool captureAndUpload(const char *reason)
 {
+    saveCameraDiagnostic("capture_start");
     if (!initCamera())
+    {
+        saveCameraDiagnostic("init_failed");
         return false;
+    }
     if (!isWiFiConnected())
     {
         Serial.println("[CAMERA][UPLOAD][WARN] Wi-Fi indisponivel.");
+        saveCameraDiagnostic("wifi_unavailable");
         return false;
     }
 
@@ -265,14 +297,16 @@ bool captureAndUpload(const char *reason)
     if (fb == nullptr || fb->len == 0)
     {
         Serial.println("[CAMERA][ERRO] Falha ao capturar frame apos retentativas. Verifique pinout, alimentacao, XCLK, PSRAM e resolucao.");
+        saveCameraDiagnostic("frame_failed");
         return false;
     }
 
-    Serial.printf("[CAMERA] Captura OK: %u bytes (%s) heap=%u psram=%u\n",
+    saveCameraDiagnostic("frame_ok", static_cast<int>(fb->len));
+    Serial.printf("[CAMERA] Captura OK: %u bytes (%s) heap=%lu psram=%lu\n",
                   static_cast<unsigned>(fb->len),
                   reason,
-                  ESP.getFreeHeap(),
-                  ESP.getFreePsram());
+                  static_cast<unsigned long>(ESP.getFreeHeap()),
+                  static_cast<unsigned long>(ESP.getFreePsram()));
 
     const String filename = String("ov5640_") + nowFileTimestamp() + ".jpg";
     const String capturedAt = nowIso8601();
@@ -292,13 +326,15 @@ bool captureAndUpload(const char *reason)
             imageData = copiedImage;
             esp_camera_fb_return(fb);
             fb = nullptr;
-            Serial.printf("[CAMERA] Frame copiado para buffer de upload: bytes=%u heap=%u psram=%u\n",
+            Serial.printf("[CAMERA] Frame copiado para buffer de upload: bytes=%u heap=%lu psram=%lu\n",
                           static_cast<unsigned>(imageLength),
-                          ESP.getFreeHeap(),
-                          ESP.getFreePsram());
+                          static_cast<unsigned long>(ESP.getFreeHeap()),
+                          static_cast<unsigned long>(ESP.getFreePsram()));
+            saveCameraDiagnostic("frame_copied", static_cast<int>(imageLength));
             if (CAMERA_DEINIT_BEFORE_UPLOAD)
             {
                 deinitCameraDriver("frame copiado antes do upload");
+                saveCameraDiagnostic("camera_deinit_before_upload", static_cast<int>(imageLength));
             }
         }
         else
@@ -316,6 +352,7 @@ bool captureAndUpload(const char *reason)
     if (!http.begin(client, CAMERA_UPLOAD_URL))
     {
         Serial.println("[CAMERA][UPLOAD][ERRO] http.begin falhou.");
+        saveCameraDiagnostic("http_begin_failed");
         if (fb != nullptr)
             esp_camera_fb_return(fb);
         if (copiedImage != nullptr)
@@ -331,12 +368,14 @@ bool captureAndUpload(const char *reason)
     http.addHeader("x-reason", reason);
     http.addHeader("x-captured-at", capturedAt);
 
-    Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u heap=%u psram=%u\n",
+    saveCameraDiagnostic("http_post_start", static_cast<int>(imageLength));
+    Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u heap=%lu psram=%lu\n",
                   filename.c_str(),
                   static_cast<unsigned>(imageLength),
-                  ESP.getFreeHeap(),
-                  ESP.getFreePsram());
+                  static_cast<unsigned long>(ESP.getFreeHeap()),
+                  static_cast<unsigned long>(ESP.getFreePsram()));
     const int status = http.POST(const_cast<uint8_t *>(imageData), imageLength);
+    saveCameraDiagnostic("http_post_done", status);
     const String response = http.getString();
     http.end();
     if (fb != nullptr)
@@ -344,12 +383,14 @@ bool captureAndUpload(const char *reason)
     if (copiedImage != nullptr)
         free(copiedImage);
 
-    Serial.printf("[CAMERA][UPLOAD] HTTP %d resposta=%s heap=%u psram=%u\n",
+    Serial.printf("[CAMERA][UPLOAD] HTTP %d resposta=%s heap=%lu psram=%lu\n",
                   status,
                   response.substring(0, 180).c_str(),
-                  ESP.getFreeHeap(),
-                  ESP.getFreePsram());
-    return status >= 200 && status < 300;
+                  static_cast<unsigned long>(ESP.getFreeHeap()),
+                  static_cast<unsigned long>(ESP.getFreePsram()));
+    const bool ok = status >= 200 && status < 300;
+    saveCameraDiagnostic(ok ? "upload_success" : "upload_http_error", status);
+    return ok;
 }
 
 bool isAutoCaptureDue()

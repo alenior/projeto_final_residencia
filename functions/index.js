@@ -36,6 +36,26 @@ function safeStorageName(name) {
   return String(name || `ov5640_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9_.-]/g, '_');
 }
 
+function setCorsHeaders(res, contentType = null) {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type,x-camera-upload-token,x-device-id,x-namespace,x-filename,x-reason,x-captured-at');
+  if (contentType) res.set('Content-Type', contentType);
+}
+
+function functionBaseUrl(functionName) {
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '';
+  const region = process.env.FUNCTION_REGION || 'us-central1';
+  if (!projectId) return null;
+  return `https://${region}-${projectId}.cloudfunctions.net/${functionName}`;
+}
+
+function cameraProxyUrl(path) {
+  const base = functionBaseUrl('getCameraImage');
+  if (!base) return null;
+  return `${base}?path=${encodeURIComponent(path)}`;
+}
+
 function copyDefinedFields(source, target, fieldNames) {
   for (const fieldName of fieldNames) {
     if (source[fieldName] !== undefined) {
@@ -83,6 +103,10 @@ exports.ingestMqttEvent = onRequest({ invoker: 'public' }, async (req, res) => {
 // Aceita JSON base64 ou corpo binario image/jpeg. No modo binario, envie headers x-device-id, x-namespace, x-filename, x-reason e x-captured-at.
 exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, memory: '512Mi' }, async (req, res) => {
   try {
+    setCorsHeaders(res);
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
     if (req.method !== 'POST') {
       return res.status(405).json({ ok: false, error: 'Use POST' });
     }
@@ -137,6 +161,8 @@ exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, m
       },
     });
 
+    const proxyUrl = cameraProxyUrl(path);
+
     const docRef = await db.collection('devices').doc(deviceId).collection('images').add({
       device_id: deviceId,
       filename,
@@ -147,6 +173,7 @@ exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, m
       reason,
       metadata,
       upload_mode: isRawImage ? 'raw_image' : 'base64_json',
+      proxy_url: proxyUrl,
       captured_at_device: capturedAt,
       created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -154,9 +181,42 @@ exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, m
     });
 
     logger.info('Imagem da camera gravada', { deviceId, path, imageId: docRef.id, sizeBytes: imageBuffer.length });
-    return res.status(200).json({ ok: true, path, imageId: docRef.id, sizeBytes: imageBuffer.length });
+    return res.status(200).json({ ok: true, path, imageId: docRef.id, sizeBytes: imageBuffer.length, proxyUrl });
   } catch (err) {
     logger.error('uploadCameraImage error', err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+exports.getCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 30, memory: '256Mi' }, async (req, res) => {
+  try {
+    setCorsHeaders(res);
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+    if (req.method !== 'GET') {
+      return res.status(405).json({ ok: false, error: 'Use GET' });
+    }
+
+    const path = String(req.query.path || '');
+    if (!path.startsWith('devices/') || !path.includes('/images/')) {
+      return res.status(400).json({ ok: false, error: 'path invalido' });
+    }
+
+    const file = admin.storage().bucket().file(path);
+    const [exists] = await file.exists();
+    if (!exists) {
+      return res.status(404).json({ ok: false, error: 'imagem nao encontrada' });
+    }
+
+    const [metadata] = await file.getMetadata();
+    const [buffer] = await file.download();
+    res.set('Cache-Control', 'public, max-age=300');
+    res.set('Content-Type', metadata.contentType || 'image/jpeg');
+    return res.status(200).send(buffer);
+  } catch (err) {
+    logger.error('getCameraImage error', err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 });

@@ -97,6 +97,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
             _ImageHistorySection(
               imagesFuture: _imagesFuture!,
               loadImageBytes: repo.loadImageBytes,
+              proxyImageUrl: repo.proxyImageUrl,
               onRetry: () => _refreshImages(deviceId),
             ),
           ],
@@ -320,11 +321,13 @@ class _CameraScheduleSummary extends StatelessWidget {
 class _ImageHistorySection extends StatelessWidget {
   final Future<List<CameraItem>> imagesFuture;
   final Future<Uint8List?> Function(CameraItem item) loadImageBytes;
+  final String Function(CameraItem item) proxyImageUrl;
   final VoidCallback onRetry;
 
   const _ImageHistorySection({
     required this.imagesFuture,
     required this.loadImageBytes,
+    required this.proxyImageUrl,
     required this.onRetry,
   });
 
@@ -424,6 +427,7 @@ class _ImageHistorySection extends StatelessWidget {
                     return _CameraImageTile(
                       item: images[index],
                       loadImageBytes: loadImageBytes,
+                      proxyImageUrl: proxyImageUrl,
                     );
                   },
                 );
@@ -439,8 +443,13 @@ class _ImageHistorySection extends StatelessWidget {
 class _CameraImageTile extends StatefulWidget {
   final CameraItem item;
   final Future<Uint8List?> Function(CameraItem item) loadImageBytes;
+  final String Function(CameraItem item) proxyImageUrl;
 
-  const _CameraImageTile({required this.item, required this.loadImageBytes});
+  const _CameraImageTile({
+    required this.item,
+    required this.loadImageBytes,
+    required this.proxyImageUrl,
+  });
 
   @override
   State<_CameraImageTile> createState() => _CameraImageTileState();
@@ -484,7 +493,15 @@ class _CameraImageTileState extends State<_CameraImageTile> {
 
                   final bytes = snapshot.data;
                   if (snapshot.hasError || bytes == null || bytes.isEmpty) {
-                    return const _ImagePlaceholder(label: 'Erro ao carregar');
+                    return Image.network(
+                      widget.proxyImageUrl(item),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const _ImagePlaceholder(
+                          label: 'Erro ao carregar',
+                        );
+                      },
+                    );
                   }
 
                   return Image.memory(bytes, fit: BoxFit.cover);
@@ -543,8 +560,14 @@ class _CameraImageTileState extends State<_CameraImageTile> {
                         return const Center(child: CircularProgressIndicator());
                       }
                       if (snapshot.hasError || bytes == null || bytes.isEmpty) {
-                        return const _ImagePlaceholder(
-                          label: 'Erro ao carregar',
+                        return Image.network(
+                          widget.proxyImageUrl(item),
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const _ImagePlaceholder(
+                              label: 'Erro ao carregar',
+                            );
+                          },
                         );
                       }
                       return Image.memory(bytes, fit: BoxFit.contain);

@@ -11,6 +11,9 @@
 #include "time_manager.h"
 #include "wifi_manager.h"
 
+// Declaracao explicita para evitar falha de resolucao no preprocessamento da IDE Arduino.
+extern void printCameraUploadDiagnostic();
+
 #ifndef PIN_BOTAO_CAMERA
 #define PIN_BOTAO_CAMERA 45
 #endif
@@ -33,6 +36,35 @@ unsigned long lastCameraButtonChangeMs = 0;
 unsigned long lastCameraButtonCaptureMs = 0;
 bool lastCameraButtonReading = !CAMERA_BUTTON_ACTIVE_LOW;
 bool stableCameraButtonState = !CAMERA_BUTTON_ACTIVE_LOW;
+
+const char *resetReasonName(esp_reset_reason_t reason)
+{
+    switch (reason)
+    {
+    case ESP_RST_POWERON:
+        return "POWERON";
+    case ESP_RST_EXT:
+        return "EXT";
+    case ESP_RST_SW:
+        return "SW";
+    case ESP_RST_PANIC:
+        return "PANIC";
+    case ESP_RST_INT_WDT:
+        return "INT_WDT";
+    case ESP_RST_TASK_WDT:
+        return "TASK_WDT";
+    case ESP_RST_WDT:
+        return "WDT";
+    case ESP_RST_DEEPSLEEP:
+        return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:
+        return "BROWNOUT";
+    case ESP_RST_SDIO:
+        return "SDIO";
+    default:
+        return "UNKNOWN";
+    }
+}
 
 void setupLocalCaptureButton()
 {
@@ -92,7 +124,7 @@ void handleLocalCaptureButton()
 
 String buildTelemetryJson()
 {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
     doc["timestamp"] = nowIso8601();
     doc["uptime_ms"] = millis();
     doc["free_heap"] = ESP.getFreeHeap();
@@ -149,10 +181,14 @@ void setup()
     delay(500);
     Serial.println("\n==================== BOOT ARDUINO ====================");
     Serial.printf("EstufaIoT Arduino firmware device=%s namespace=%s\n", DEVICE_ID, MQTT_NAMESPACE);
-    Serial.printf("Reset reason=%d\n", static_cast<int>(esp_reset_reason()));
+    const esp_reset_reason_t resetReason = esp_reset_reason();
+    Serial.printf("Reset reason=%d(%s)\n", static_cast<int>(resetReason), resetReasonName(resetReason));
+    printCameraUploadDiagnostic();
     Serial.printf("GPIOs -> bomba:%d lampada:%d pir:%d solo:%d ldr:%d ventoinha:%d botao_camera:%d\n",
                   PIN_RELE_BOMBA, PIN_RELE_LAMPADA, PIN_PIR, PIN_SOLO_ADC, PIN_LDR_ADC, PIN_VENTOINHA, PIN_BOTAO_CAMERA);
-    Serial.printf("Heap=%u PSRAM livre=%u\n", ESP.getFreeHeap(), heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    Serial.printf("Heap=%lu PSRAM livre=%lu\n",
+                  static_cast<unsigned long>(ESP.getFreeHeap()),
+                  static_cast<unsigned long>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     Serial.println("======================================================");
 
     setupActuators();

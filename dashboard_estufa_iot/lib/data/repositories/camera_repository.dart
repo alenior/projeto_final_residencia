@@ -18,11 +18,14 @@ class CameraRepository {
   final FirebaseStorage _storage;
   final FirebaseFirestore _firestore;
   final CommandRepository _commandRepository;
+  final String functionsBaseUrl;
 
   CameraRepository({
     FirebaseStorage? storage,
     FirebaseFirestore? firestore,
     required CommandRepository commandRepository,
+    this.functionsBaseUrl =
+        'https://us-central1-estufa-iot-25a96.cloudfunctions.net',
   }) : _storage = storage ?? FirebaseStorage.instance,
        _firestore = firestore ?? FirebaseFirestore.instance,
        _commandRepository = commandRepository;
@@ -82,6 +85,14 @@ class CameraRepository {
     int maxSizeBytes = 10 * 1024 * 1024,
   }) {
     return _storage.ref(item.path).getData(maxSizeBytes);
+  }
+
+  String proxyImageUrl(CameraItem item) {
+    if (item.proxyUrl != null && item.proxyUrl!.isNotEmpty)
+      return item.proxyUrl!;
+    return Uri.parse(
+      '$functionsBaseUrl/getCameraImage',
+    ).replace(queryParameters: {'path': item.path}).toString();
   }
 
   /// Observa metadados de imagens gravados pela Cloud Function `uploadCameraImage`.

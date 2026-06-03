@@ -11,6 +11,7 @@ class CameraItem {
   final String deviceId;
   final String path;
   final String? downloadUrl;
+  final String? proxyUrl;
   final String? contentType;
   final int? sizeBytes;
   final DateTime? createdAt;
@@ -23,6 +24,7 @@ class CameraItem {
     required this.path,
     required this.metadata,
     this.downloadUrl,
+    this.proxyUrl,
     this.contentType,
     this.sizeBytes,
     this.createdAt,
@@ -39,6 +41,7 @@ class CameraItem {
       deviceId: _asString(data['device_id'], fallback: deviceDoc?.id ?? ''),
       path: _asString(data['path']),
       downloadUrl: data['download_url']?.toString(),
+      proxyUrl: data['proxy_url']?.toString(),
       contentType: data['content_type']?.toString(),
       sizeBytes: _asInt(data['size_bytes']),
       createdAt: _asDateTime(data['created_at']),
@@ -64,6 +67,7 @@ class CameraItem {
       deviceId: deviceId,
       path: ref.fullPath,
       downloadUrl: url,
+      proxyUrl: metadata.customMetadata?['proxy_url'],
       contentType: metadata.contentType,
       sizeBytes: metadata.size,
       createdAt: metadata.timeCreated,
@@ -77,18 +81,21 @@ class CameraItem {
     );
   }
 
-  bool get hasPreview => downloadUrl != null && downloadUrl!.isNotEmpty;
+  bool get hasPreview =>
+      (proxyUrl != null && proxyUrl!.isNotEmpty) ||
+      (downloadUrl != null && downloadUrl!.isNotEmpty);
 
   Map<String, dynamic> toMap() => {
-        'device_id': deviceId,
-        'path': path,
-        'download_url': downloadUrl,
-        'content_type': contentType,
-        'size_bytes': sizeBytes,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-        'metadata': metadata,
-      };
+    'device_id': deviceId,
+    'path': path,
+    'download_url': downloadUrl,
+    'proxy_url': proxyUrl,
+    'content_type': contentType,
+    'size_bytes': sizeBytes,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+    'metadata': metadata,
+  };
 
   static String _asString(Object? value, {String fallback = ''}) {
     if (value == null) return fallback;
