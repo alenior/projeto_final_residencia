@@ -165,7 +165,7 @@ class _CameraPageState extends ConsumerState<CameraPage> {
                     ),
                   ),
                   DropdownButtonFormField<int>(
-                    value: draft.intervalHours,
+                    initialValue: draft.intervalHours,
                     decoration: const InputDecoration(
                       labelText: 'Periodicidade',
                       border: OutlineInputBorder(),

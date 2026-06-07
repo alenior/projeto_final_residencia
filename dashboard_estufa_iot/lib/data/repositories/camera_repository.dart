@@ -88,8 +88,9 @@ class CameraRepository {
   }
 
   String proxyImageUrl(CameraItem item) {
-    if (item.proxyUrl != null && item.proxyUrl!.isNotEmpty)
+    if (item.proxyUrl != null && item.proxyUrl!.isNotEmpty) {
       return item.proxyUrl!;
+    }
     return Uri.parse(
       '$functionsBaseUrl/getCameraImage',
     ).replace(queryParameters: {'path': item.path}).toString();

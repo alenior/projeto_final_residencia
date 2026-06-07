@@ -68,4 +68,5 @@ O firmware também pode usar um botão momentâneo em `PIN_BOTAO_CAMERA` para va
 
 - Os arquivos MicroPython permanecem no repositório como referência/protótipo, mas a câmera OV5640 deve ser testada por este firmware Arduino.
 - O upload atual envia o JPEG como corpo binário (`image/jpeg`) para a Function `uploadCameraImage`, evitando o aumento de memória causado por base64. A Function também mantém compatibilidade com JSON/base64 para testes manuais.
+- Se houver reset após `Captura OK`, mantenha `CAMERA_COPY_FRAME_BEFORE_UPLOAD` e `CAMERA_DEINIT_BEFORE_UPLOAD` ativos, reduza a resolução se necessário e observe no boot os campos `Reset reason=...` e `[CAMERA][LAST] stage=...`. Os parâmetros `CAMERA_UPLOAD_BUFFER_INTERNAL_MAX_BYTES`, `CAMERA_PRE_UPLOAD_SETTLE_MS` e `CAMERA_POST_UPLOAD_SETTLE_MS` controlam a cópia em RAM interna e as pausas antes/depois do HTTPS para reduzir instabilidade por pico de consumo/memória.
 - Para produção, substitua `WiFiClientSecure::setInsecure()` por validação de certificado CA.
