@@ -84,9 +84,10 @@ Arquivos principais:
 - `firmware_arduino/time_manager.*` — NTP/hora local.
 - `firmware_arduino/mqtt_manager.*` — MQTT e comandos.
 - `firmware_arduino/camera_manager.*` — OV5640, agenda e upload para Firebase.
-- `firmware_arduino/actuators.*` — bomba, lâmpada, ventoinha e leituras básicas.
+- `firmware_arduino/climate_manager.*` — LDR em GPIO1, HDC1080 no I2C0 (SDA 14/SCL 21), automação da lâmpada LED em GPIO44 e envio de histórico para Firestore.
+- `firmware_arduino/actuators.*` — bomba, lâmpada LED, leituras básicas e compatibilidade com atuadores opcionais.
 
-Consulte `firmware_arduino/README.md` antes do upload pela Arduino IDE.
+Consulte `firmware_arduino/README.md` antes do upload pela Arduino IDE. Se a compilação indicar `PubSubClient.h: No such file or directory`, instale `PubSubClient` pelo Library Manager e defina `MQTT_USE_PUBSUBCLIENT 1` no `config.h`; sem ela o firmware compila em modo degradado, mas não recebe comandos MQTT do Flutter.
 
 ## Deploy Cloud Functions
 ### Pré-requisitos
@@ -104,7 +105,7 @@ Consulte `firmware_arduino/README.md` antes do upload pela Arduino IDE.
    - `npm install`
 4. Configurar variáveis de ambiente locais (opcional para emulação):
    - copiar `functions/.env.example` para `functions/.env`
-   - definir `CAMERA_UPLOAD_TOKEN` com um valor forte e igual ao `secrets.py` do ESP32
+   - definir `CAMERA_UPLOAD_TOKEN` com um valor forte e igual ao `secrets.py`/`config.h` do ESP32; o módulo clima reaproveita esse token por padrão
 5. Deploy:
    - `firebase deploy --only functions`
 
@@ -135,6 +136,12 @@ Dependências usadas pelos repositórios/modelos do dashboard:
 
 Para gerar `firebase_options.dart`, entre em `dashboard_estufa_iot/` e execute `flutterfire configure` após instalar a Firebase CLI oficial e o FlutterFire CLI. O arquivo é específico do projeto Firebase/local e está no `.gitignore`.
 
+### Visualização de imagens no Flutter
+
+### Módulo Clima no Flutter
+
+O módulo Clima lê `devices/{deviceId}/climate` para exibir histórico de temperatura, umidade, luminosidade e estado da lâmpada LED. O botão manual grava comando `iluminar` em `devices/{deviceId}/commands`, que a Function `dispatchCommandToMqtt` publica no MQTT para o ESP32-S3. O firmware também liga a lâmpada automaticamente quando `LDR_DARK_THRESHOLD_RAW` é atingido e registra o evento via `ingestClimateReading`.
+
 
 ### Visualização de imagens no Flutter
 
@@ -154,7 +161,9 @@ Se o ESP32 mostrar `HTTP 403` com HTML `Forbidden` ao chamar `uploadCameraImage`
 
 ### Observação sobre deploy das Functions
 
-O projeto versiona `firebase.json` com `source=functions`, `codebase=default` e runtime `nodejs22` para evitar que o Firebase CLI use configurações locais antigas ou inconsistentes. Antes de reenviar as Functions, atualize as dependências no diretório `functions/`:
+O projeto versiona `firebase.json` com `source=functions`, `codebase=default` e runtime `nodejs22` para evitar que o Firebase CLI use configurações locais antigas ou inconsistentes. Também foi versionado `functions/functions.yaml`, gerado pelo binário `firebase-functions`, para evitar timeout na etapa de descoberta HTTP (`Cannot determine backend specification. Timeout after 10000`) em máquinas mais lentas. Sempre que adicionar/remover/renomear Functions, rode `cd functions && npm run manifest` antes do deploy.
+
+Antes de reenviar as Functions, atualize as dependências no diretório `functions/`:
 
 ```bash
 cd functions

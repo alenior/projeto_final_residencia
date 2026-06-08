@@ -2,7 +2,17 @@
 #include "config.h"
 #include "wifi_manager.h"
 
+#ifndef MQTT_USE_PUBSUBCLIENT
+#define MQTT_USE_PUBSUBCLIENT 0
+#endif
+
+#if MQTT_USE_PUBSUBCLIENT
 #include <PubSubClient.h>
+#define ESTUFA_HAS_PUBSUBCLIENT 1
+#else
+#define ESTUFA_HAS_PUBSUBCLIENT 0
+#endif
+
 #include <WiFi.h>
 #include <cstring>
 
@@ -16,6 +26,12 @@ namespace
     String topicBase()
     {
         return String("estufa/") + MQTT_NAMESPACE + "/" + DEVICE_ID;
+    }
+
+    #if ESTUFA_HAS_PUBSUBCLIENT
+    PubSubClient& mqttClientRef() {
+        static PubSubClient client(wifiClient);
+        return client;
     }
 
     String topicTelemetry() { return topicBase() + "/telemetria"; }
@@ -55,27 +71,25 @@ namespace
     {
         if (!isWiFiConnected())
             return false;
-        if (mqtt.connected())
-            return true;
+        
+        PubSubClient& client = mqttClientRef();
+        if (client.connected()) return true;
 
-        mqtt.setServer(MQTT_BROKER, MQTT_PORT);
-        mqtt.setCallback(onMqttMessage);
-        mqtt.setKeepAlive(MQTT_KEEPALIVE_SECONDS);
+        client.setServer(MQTT_BROKER, MQTT_PORT);
+        client.setCallback(onMqttMessage);
+        client.setKeepAlive(MQTT_KEEPALIVE_SECONDS);
 
         Serial.printf("[MQTT] Conectando em %s:%d...\n", MQTT_BROKER, MQTT_PORT);
         bool connected;
         if (strlen(MQTT_USER) > 0)
         {
-            connected = mqtt.connect(DEVICE_ID, MQTT_USER, MQTT_PASSWORD, topicStatus().c_str(), 0, true, "{\"online\":false}");
-        }
-        else
-        {
-            connected = mqtt.connect(DEVICE_ID, topicStatus().c_str(), 0, true, "{\"online\":false}");
+            connected = client.connect(DEVICE_ID, MQTT_USER, MQTT_PASSWORD, topicStatus().c_str(), 0, true, "{\"online\":false}");
+        } else {
+            connected = client.connect(DEVICE_ID, topicStatus().c_str(), 0, true, "{\"online\":false}");
         }
 
-        if (!connected)
-        {
-            Serial.printf("[MQTT][WARN] Falha na conexao, state=%d\n", mqtt.state());
+        if (!connected) {
+            Serial.printf("[MQTT][WARN] Falha na conexao, state=%d\n", client.state());
             return false;
         }
 
@@ -85,14 +99,14 @@ namespace
         const String legacyCommandEnglishTopic = topicLegacyCommandEnglish();
         const String generalCommandTopic = topicGeneralCommand();
 
-        Serial.printf("[MQTT][SUB] %s => %s\n", commandTopic.c_str(), mqtt.subscribe(commandTopic.c_str()) ? "OK" : "FAIL");
-        Serial.printf("[MQTT][SUB] %s => %s\n", commandEnglishTopic.c_str(), mqtt.subscribe(commandEnglishTopic.c_str()) ? "OK" : "FAIL");
-        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandTopic.c_str(), mqtt.subscribe(legacyCommandTopic.c_str()) ? "OK" : "FAIL");
-        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandEnglishTopic.c_str(), mqtt.subscribe(legacyCommandEnglishTopic.c_str()) ? "OK" : "FAIL");
-        Serial.printf("[MQTT][SUB] %s => %s\n", generalCommandTopic.c_str(), mqtt.subscribe(generalCommandTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", commandTopic.c_str(), client.subscribe(commandTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", commandEnglishTopic.c_str(), client.subscribe(commandEnglishTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandTopic.c_str(), client.subscribe(legacyCommandTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandEnglishTopic.c_str(), client.subscribe(legacyCommandEnglishTopic.c_str()) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", generalCommandTopic.c_str(), client.subscribe(generalCommandTopic.c_str()) ? "OK" : "FAIL");
 
         publishStatus(true);
-        mqtt.publish(topicTest().c_str(), "{\"evento\":\"boot\",\"firmware\":\"arduino\"}");
+        client.publish(topicTest().c_str(), "{\"evento\":\"boot\",\"firmware\":\"arduino\"}");
 
         Serial.printf("[MQTT] pub: %s | %s | %s\n", topicTelemetry().c_str(), topicStatus().c_str(), topicCamera().c_str());
         Serial.printf("[MQTT] sub: %s | %s | %s | %s | %s\n",
@@ -103,58 +117,90 @@ namespace
                       topicGeneralCommand().c_str());
         return true;
     }
+    #endif
 }
 
 void setupMqtt(MqttCommandCallback callback)
 {
     commandCallback = callback;
+    #if ESTUFA_HAS_PUBSUBCLIENT
     connectMqtt();
+    #else
+        Serial.println("[MQTT][WARN] PubSubClient.h desabilitado/ausente; MQTT desabilitado nesta compilacao.");
+    #endif
 }
 
 void mqttLoop()
 {
-    if (!mqtt.connected())
-    {
-        if (millis() - lastReconnectAttemptMs > 5000UL)
-        {
-            lastReconnectAttemptMs = millis();
-            connectMqtt();
+    #if ESTUFA_HAS_PUBSUBCLIENT
+        PubSubClient& client = mqttClientRef();
+        if (!client.connected()) {
+            if (millis() - lastReconnectAttemptMs > 5000UL)
+            {
+                lastReconnectAttemptMs = millis();
+                connectMqtt();
+            }
+            return;
         }
-        return;
-    }
-    mqtt.loop();
+    client.loop();
+    #else
+        (void)lastReconnectAttemptMs;
+    #endif
 }
 
 bool publishTelemetry(const String &payloadJson)
 {
+    #if ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
-    return mqtt.publish(topicTelemetry().c_str(), payloadJson.c_str());
+    return mqttClientRef().publish(topicTelemetry().c_str(), payloadJson.c_str());
+    #else
+        (void)payloadJson;
+        return false;
+    #endif
 }
 
 bool publishStatus(bool online)
 {
+    #if ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
     String payload = String("{\"online\":") + (online ? "true" : "false") + ",\"ip\":\"" + localIpString() + "\"}";
-    return mqtt.publish(topicStatus().c_str(), payload.c_str(), true);
+    return mqttClientRef().publish(topicStatus().c_str(), payload.c_str(), true);
+    #else
+        (void)online;
+        return false;
+    #endif
 }
 
 bool publishCameraEvent(const String &payloadJson)
 {
+    #if ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
-    return mqtt.publish(topicCamera().c_str(), payloadJson.c_str());
+    return mqttClientRef().publish(topicCamera().c_str(), payloadJson.c_str());
+    #else
+        (void)payloadJson;
+        return false;
+    #endif
 }
 
 bool isMqttConnected()
 {
-    return mqtt.connected();
+    #if ESTUFA_HAS_PUBSUBCLIENT
+    return mqttClientRef().connected();
+    #else
+        return false;
+    #endif
 }
 
 int mqttConnectionState()
 {
-    return mqtt.state();
+    #if ESTUFA_HAS_PUBSUBCLIENT
+    return mqttClientRef().state();
+    #else
+        return -99;
+    #endif
 }
 
 String mqttCommandTopic()

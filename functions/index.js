@@ -56,6 +56,20 @@ function cameraProxyUrl(path) {
   return `${base}?path=${encodeURIComponent(path)}`;
 }
 
+function numberOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function boolOrFalse(value) {
+  if (value === true) return true;
+  if (value === false || value === undefined || value === null) return false;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') return value.toLowerCase() === 'true' || value === '1';
+  return false;
+}
+
 function copyDefinedFields(source, target, fieldNames) {
   for (const fieldName of fieldNames) {
     if (source[fieldName] !== undefined) {
@@ -95,6 +109,78 @@ exports.ingestMqttEvent = onRequest({ invoker: 'public' }, async (req, res) => {
     return res.status(200).json({ ok: true });
   } catch (err) {
     logger.error('ingestMqttEvent error', err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ESP32 -> HTTPS -> Firestore climate history.
+// Grava leituras do LDR/HDC1080 em devices/{deviceId}/climate e registra evento quando a iluminacao e acionada por baixa luminosidade.
+exports.ingestClimateReading = onRequest({ invoker: 'public', timeoutSeconds: 30, memory: '256Mi' }, async (req, res) => {
+  try {
+    setCorsHeaders(res);
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+    if (req.method !== 'POST') {
+      return res.status(405).json({ ok: false, error: 'Use POST' });
+    }
+
+    if (!validateUploadToken(req)) {
+      return res.status(401).json({ ok: false, error: 'Token de upload invalido' });
+    }
+
+    const body = req.body || {};
+    const deviceId = body.deviceId || req.get('x-device-id');
+    const namespace = body.namespace || req.get('x-namespace') || DEFAULT_NAMESPACE;
+    if (!deviceId) {
+      return res.status(400).json({ ok: false, error: 'deviceId é obrigatório' });
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const reading = {
+      device_id: deviceId,
+      namespace,
+      topic: `estufa/${namespace}/${deviceId}/clima`,
+      timestamp_device: body.timestamp || null,
+      uptime_ms: numberOrNull(body.uptime_ms),
+      ldr_raw: numberOrNull(body.ldr_raw),
+      ldr_percent: numberOrNull(body.ldr_percent),
+      low_light: boolOrFalse(body.low_light),
+      auto_light_triggered: boolOrFalse(body.auto_light_triggered),
+      light_threshold_raw: numberOrNull(body.light_threshold_raw),
+      light_hysteresis_raw: numberOrNull(body.light_hysteresis_raw),
+      lamp_on: boolOrFalse(body.lamp_on),
+      lamp_reason: body.lamp_reason || 'unknown',
+      manual_override_active: boolOrFalse(body.manual_override_active),
+      hdc1080_available: boolOrFalse(body.hdc1080_available),
+      temp_c: numberOrNull(body.temp_c),
+      humidity_percent: numberOrNull(body.humidity_percent),
+      source: 'esp32_s3_climate',
+      created_at: now,
+      updated_at: now,
+    };
+
+    const base = db.collection('devices').doc(deviceId);
+    const docRef = await base.collection('climate').add(reading);
+
+    if (reading.auto_light_triggered && reading.low_light && reading.lamp_on) {
+      await base.collection('events').add({
+        kind: 'low_light_lamp_on',
+        namespace,
+        ldr_raw: reading.ldr_raw,
+        ldr_percent: reading.ldr_percent,
+        light_threshold_raw: reading.light_threshold_raw,
+        lamp_on: reading.lamp_on,
+        message: 'Luminosidade abaixo do limite; lampada LED acionada automaticamente.',
+        created_at: now,
+        climate_reading_id: docRef.id,
+      });
+    }
+
+    logger.info('Leitura de clima gravada', { deviceId, readingId: docRef.id, ldrRaw: reading.ldr_raw, lampOn: reading.lamp_on });
+    return res.status(200).json({ ok: true, readingId: docRef.id });
+  } catch (err) {
+    logger.error('ingestClimateReading error', err);
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -251,6 +337,9 @@ exports.dispatchCommandToMqtt = onDocumentCreated('devices/{deviceId}/commands/{
     'config',
     'reason',
     'metadata',
+    'duration_ms',
+    'manual_override_ms',
+    'lamp_reason',
   ]);
 
   if (!payload.comando) {

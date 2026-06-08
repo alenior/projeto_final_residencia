@@ -9,6 +9,7 @@
     "lint": "echo 'no lint configured'",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
+    "manifest": "node scripts/write-manifest.js",
     "deploy:debug": "firebase deploy --only functions --debug"
   },
   "dependencies": {

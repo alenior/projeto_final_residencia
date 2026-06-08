@@ -6,6 +6,7 @@
 
 #include "actuators.h"
 #include "camera_manager.h"
+#include "climate_manager.h"
 #include "config.h"
 #include "mqtt_manager.h"
 #include "time_manager.h"
@@ -132,7 +133,7 @@ String buildTelemetryJson()
     doc["wifi_ip"] = localIpString();
     doc["movimento"] = readMotion();
     doc["solo_raw"] = readSoilRaw();
-    doc["ldr_raw"] = readLdrRaw();
+    appendClimateTelemetry(doc);
 
     String output;
     serializeJson(doc, output);
@@ -146,13 +147,13 @@ void handleCommand(JsonObject command)
 
     Serial.printf("[CMD] comando=%s status=%s\n", action, status ? "true" : "false");
 
+    if (handleClimateCommand(command)) {
+        return;
+    }
+
     if (strcmp(action, "irrigar") == 0)
     {
         setPump(status);
-    }
-    else if (strcmp(action, "aquecer") == 0)
-    {
-        setLamp(status);
     }
     else if (strcmp(action, "ventilar") == 0)
     {
@@ -184,7 +185,7 @@ void setup()
     const esp_reset_reason_t resetReason = esp_reset_reason();
     Serial.printf("Reset reason=%d(%s)\n", static_cast<int>(resetReason), resetReasonName(resetReason));
     printCameraUploadDiagnostic();
-    Serial.printf("GPIOs -> bomba:%d lampada:%d pir:%d solo:%d ldr:%d ventoinha:%d botao_camera:%d\n",
+    Serial.printf("GPIOs -> bomba:%d lampada_led:%d pir:%d solo:%d ldr:%d ventoinha:%d botao_camera:%d\n",
                   PIN_RELE_BOMBA, PIN_RELE_LAMPADA, PIN_PIR, PIN_SOLO_ADC, PIN_LDR_ADC, PIN_VENTOINHA, PIN_BOTAO_CAMERA);
     Serial.printf("Heap=%lu PSRAM livre=%lu\n",
                   static_cast<unsigned long>(ESP.getFreeHeap()),
@@ -195,6 +196,7 @@ void setup()
     setupLocalCaptureButton();
     setupWiFi();
     setupTimeSync();
+    setupClimateManager();
     setupCameraManager();
     setupMqtt(handleCommand);
 }
@@ -204,6 +206,7 @@ void loop()
     ensureWiFiConnected();
     mqttLoop();
     handleLocalCaptureButton();
+    processClimateAutomation();
 
     if (millis() - lastMqttDebugMs >= 30000UL)
     {

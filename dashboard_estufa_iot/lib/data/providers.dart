@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import 'repositories/camera_repository.dart';
+import 'repositories/climate_repository.dart';
 import 'repositories/command_repository.dart';
 
 /// Dispositivo selecionado no dashboard.
@@ -39,6 +40,15 @@ final commandRepositoryProvider = Provider<CommandRepository>((ref) {
 final cameraRepositoryProvider = Provider<CameraRepository>((ref) {
   return CameraRepository(
     storage: ref.watch(firebaseStorageProvider),
+    firestore: ref.watch(firebaseFirestoreProvider),
+    commandRepository: ref.watch(commandRepositoryProvider),
+  );
+});
+
+/// Repositório do módulo Clima: histórico de LDR/HDC1080 e comando
+/// manual da iluminação.
+final climateRepositoryProvider = Provider<ClimateRepository>((ref) {
+  return ClimateRepository(
     firestore: ref.watch(firebaseFirestoreProvider),
     commandRepository: ref.watch(commandRepositoryProvider),
   );

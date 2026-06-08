@@ -28,7 +28,7 @@ class DashboardPage extends StatelessWidget {
         children: [
           ModuleCard(
             title: 'Clima',
-            subtitle: 'Temperatura, umidade e ventoinha (GPIO 44)',
+            subtitle: 'Temperatura, umidade e luminosidade',
             icon: Icons.thermostat,
             color: Colors.orange,
             onTap: () => context.push('/climate'),

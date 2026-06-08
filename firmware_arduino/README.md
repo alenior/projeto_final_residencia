@@ -11,7 +11,8 @@ Este diretório contém a migração do firmware para Arduino/C++ para viabiliza
 - `/workspace/projeto_final_residencia/firmware_arduino/time_manager.*` — equivalente ao `sincronizar_horario.py`.
 - `/workspace/projeto_final_residencia/firmware_arduino/mqtt_manager.*` — equivalente ao `envio_e_recebimento_nuvem.py`.
 - `/workspace/projeto_final_residencia/firmware_arduino/camera_manager.*` — equivalente ao `captura_de_imagem.py`.
-- `/workspace/projeto_final_residencia/firmware_arduino/actuators.*` — GPIOs de bomba, lâmpada, ventoinha, PIR e leituras ADC.
+- `/workspace/projeto_final_residencia/firmware_arduino/climate_manager.*` — módulo clima com LDR, HDC1080, automação da lâmpada LED e envio ao Firebase.
+- `/workspace/projeto_final_residencia/firmware_arduino/actuators.*` — GPIOs de bomba, lâmpada LED, PIR e leituras ADC.
 
 ## Dependências Arduino IDE
 
@@ -20,7 +21,9 @@ Instale pelo Library Manager:
 - `PubSubClient`
 - `ArduinoJson`
 
-Também é necessário instalar o pacote de placas ESP32 da Espressif na Arduino IDE. A câmera usa `esp_camera.h`, fornecido pelo core ESP32.
+Se aparecer `fatal error: PubSubClient.h: No such file or directory`, instale a biblioteca `PubSubClient` pelo Library Manager da Arduino IDE. O firmware também pode compilar sem essa biblioteca quando `MQTT_USE_PUBSUBCLIENT` estiver `0` ou ausente no `config.h`, permitindo validar Wi-Fi/clima/câmera local; nesse modo MQTT, comandos do Flutter e publicações de telemetria ficam desabilitados. Para a integração completa do app, instale `PubSubClient` e defina `#define MQTT_USE_PUBSUBCLIENT 1` no `firmware_arduino/config.h`.
+
+Também é necessário instalar o pacote de placas ESP32 da Espressif na Arduino IDE. A câmera usa `esp_camera.h`, fornecido pelo core ESP32 quando uma placa ESP32 com suporte a câmera é selecionada. Se a IDE compilar com aviso de `esp_camera.h` ausente, o firmware agora desabilita apenas o módulo de câmera para permitir testar Wi-Fi/MQTT/clima; para capturar OV5640, selecione um pacote/placa ESP32-S3 com `esp32-camera` disponível e PSRAM habilitada.
 
 ## Configuração inicial
 
@@ -36,8 +39,8 @@ Também é necessário instalar o pacote de placas ESP32 da Espressif na Arduino
    firmware_arduino/config.h
    ```
 
-2. Ajuste Wi-Fi, MQTT, `CAMERA_UPLOAD_URL` e `CAMERA_UPLOAD_TOKEN`.
-3. Substitua todos os `CAMERA_PIN_*` pelo pinout real da sua placa ESP32-S3 + OV5640.
+2. Ajuste Wi-Fi, MQTT, `CAMERA_UPLOAD_URL`, `CLIMATE_INGEST_URL` e `CAMERA_UPLOAD_TOKEN`. Para receber comandos do Flutter, instale `PubSubClient` e mantenha `MQTT_USE_PUBSUBCLIENT 1`.
+3. Substitua todos os `CAMERA_PIN_*` pelo pinout real da sua placa ESP32-S3 + OV5640 e confirme o HDC1080 em SDA=GPIO14/SCL=GPIO21/endereço `0x40`.
 4. Selecione na Arduino IDE uma placa ESP32-S3 com PSRAM habilitada.
 5. Faça upload e acompanhe o Serial Monitor em `115200`.
 
@@ -56,9 +59,14 @@ Comandos esperados:
 {"comando":"capturar","status":true}
 {"comando":"configurar_camera","habilitado":true,"hora":12,"minuto":0,"periodicidade_horas":24}
 {"comando":"irrigar","status":true}
+{"comando":"iluminar","status":true}
 {"comando":"aquecer","status":true}
 {"comando":"ventilar","status":true}
 ```
+
+## Módulo clima
+
+O LDR é lido em `PIN_LDR_ADC` (GPIO1, ADC de 12 bits, 0-4095). O HDC1080 usa I2C0 com `HDC1080_SDA_PIN 14`, `HDC1080_SCL_PIN 21`, frequência de 100 kHz e endereço `0x40`. A lâmpada LED usa `PIN_RELE_LAMPADA 44`; a ventoinha foi desabilitada no exemplo (`PIN_VENTOINHA -1`). A cada `CLIMATE_INTERVAL_MS` o firmware envia uma leitura para `CLIMATE_INGEST_URL` e liga automaticamente a lâmpada se `ldr_raw <= LDR_DARK_THRESHOLD_RAW`. O comando MQTT/Flutter `iluminar` aciona a iluminação manualmente e mantém override temporário por `CLIMATE_MANUAL_LIGHT_OVERRIDE_MS`.
 
 ## Botão local de teste da câmera
 

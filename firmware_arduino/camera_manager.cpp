@@ -7,6 +7,13 @@
 #include <cstring>
 #include <Preferences.h>
 #include <WiFiClientSecure.h>
+#if __has_include(<esp_camera.h>)
+#include <esp_camera.h>
+#define ESTUFA_HAS_ESP_CAMERA 1
+#else
+#define ESTUFA_HAS_ESP_CAMERA 0
+#define CAMERA_GRAB_WHEN_EMPTY 0
+#endif
 #include <esp_camera.h>
 #include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
@@ -32,6 +39,7 @@
 #ifndef CAMERA_CAPTURE_RETRY_DELAY_MS
 #define CAMERA_CAPTURE_RETRY_DELAY_MS 700UL
 #endif
+#if ESTUFA_HAS_ESP_CAMERA
 #ifndef CAMERA_UPLOAD_BUFFER_INTERNAL_MAX_BYTES
 #define CAMERA_UPLOAD_BUFFER_INTERNAL_MAX_BYTES 65536UL
 #endif
@@ -512,3 +520,38 @@ CameraScheduleConfig getCameraSchedule()
 {
     return scheduleConfig;
 }
+
+#else
+
+void printCameraUploadDiagnostic() {
+  Serial.println("[CAMERA][WARN] esp_camera.h nao encontrado; suporte OV5640 desabilitado nesta compilacao.");
+}
+
+void setupCameraManager() {
+  Serial.println("[CAMERA][WARN] esp_camera.h nao encontrado. Instale/seleciona um core/placa ESP32 com esp32-camera para habilitar OV5640.");
+}
+
+bool initCamera() {
+  Serial.println("[CAMERA][ERRO] initCamera ignorado: esp_camera.h ausente.");
+  return false;
+}
+
+bool captureAndUpload(const char* reason) {
+  Serial.printf("[CAMERA][ERRO] Captura '%s' indisponivel: esp_camera.h ausente.\n", reason);
+  return false;
+}
+
+bool isAutoCaptureDue() {
+  return false;
+}
+
+void updateCameraScheduleFromJson(JsonObject command) {
+  (void)command;
+  Serial.println("[CAMERA][WARN] Configuracao ignorada: esp_camera.h ausente.");
+}
+
+CameraScheduleConfig getCameraSchedule() {
+  return CameraScheduleConfig{false, CAMERA_CAPTURE_HOUR, CAMERA_CAPTURE_MINUTE, CAMERA_CAPTURE_INTERVAL_HOURS};
+}
+
+#endif
