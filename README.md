@@ -84,7 +84,7 @@ Arquivos principais:
 - `firmware_arduino/time_manager.*` — NTP/hora local.
 - `firmware_arduino/mqtt_manager.*` — MQTT e comandos.
 - `firmware_arduino/camera_manager.*` — OV5640, agenda e upload para Firebase.
-- `firmware_arduino/climate_manager.*` — LDR em GPIO1, HDC1080 no I2C0 (SDA 14/SCL 21), automação da lâmpada LED em GPIO44 e envio de histórico para Firestore.
+- `firmware_arduino/climate_manager.*` — LDR em GPIO1, HDC1080 no I2C0 (SDA 14/SCL 21), automação da lâmpada LED em GPIO48 e ventoinha em GPIO44 e envio de histórico para Firestore.
 - `firmware_arduino/actuators.*` — bomba, lâmpada LED, leituras básicas e compatibilidade com atuadores opcionais.
 
 Consulte `firmware_arduino/README.md` antes do upload pela Arduino IDE. Se a compilação indicar `PubSubClient.h: No such file or directory`, instale `PubSubClient` pelo Library Manager e defina `MQTT_USE_PUBSUBCLIENT 1` no `config.h`; sem ela o firmware compila em modo degradado, mas não recebe comandos MQTT do Flutter.
@@ -136,16 +136,16 @@ Dependências usadas pelos repositórios/modelos do dashboard:
 
 Para gerar `firebase_options.dart`, entre em `dashboard_estufa_iot/` e execute `flutterfire configure` após instalar a Firebase CLI oficial e o FlutterFire CLI. O arquivo é específico do projeto Firebase/local e está no `.gitignore`.
 
+
 ### Visualização de imagens no Flutter
 
 ### Módulo Clima no Flutter
 
-O módulo Clima lê `devices/{deviceId}/climate` para exibir histórico de temperatura, umidade, luminosidade e estado da lâmpada LED. O botão manual grava comando `iluminar` em `devices/{deviceId}/commands`, que a Function `dispatchCommandToMqtt` publica no MQTT para o ESP32-S3. O firmware também liga a lâmpada automaticamente quando `LDR_DARK_THRESHOLD_RAW` é atingido e registra o evento via `ingestClimateReading`.
-
+O módulo Clima lê `devices/{deviceId}/climate` para exibir histórico de temperatura, umidade, luminosidade, lâmpada LED e ventoinha. Os botões manuais gravam comandos `iluminar` e `ventilar` em `devices/{deviceId}/commands`, enquanto a configuração da ventoinha grava `configurar_clima`; a Function `dispatchCommandToMqtt` publica tudo no MQTT para o ESP32-S3. O firmware liga a lâmpada automaticamente quando `LDR_DARK_THRESHOLD_RAW` é atingido, aciona a ventoinha quando a temperatura supera o limiar configurado e registra os eventos via `ingestClimateReading`.
 
 ### Visualização de imagens no Flutter
 
-A tela de câmera carrega a prévia usando bytes obtidos pelo SDK do Firebase Storage, em vez de depender diretamente de `Image.network(downloadUrl)`. Isso evita falhas comuns no Flutter Web/Chrome em que uma URL HTTPS do Storage aparece no app como `statusCode: 0` por configuração de CORS/token.
+A tela de câmera tenta carregar a prévia usando bytes obtidos pelo SDK do Firebase Storage e, se necessário, usa a Function pública `getCameraImage` como proxy de leitura. Isso evita falhas comuns no Flutter Web/Chrome em que uma URL HTTPS do Storage aparece no app como `statusCode: 0` por configuração de CORS/token. Após essa alteração, faça deploy também de `getCameraImage` com `firebase deploy --only functions`.
 
 ## Segurança e boas práticas
 - Não versionar segredos (`secrets.py`, `.env`, chaves de serviço, `firebase_options.dart`).

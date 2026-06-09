@@ -19,7 +19,6 @@
 namespace
 {
     WiFiClient wifiClient;
-    PubSubClient mqtt(wifiClient);
     MqttCommandCallback commandCallback = nullptr;
     unsigned long lastReconnectAttemptMs = 0;
 
@@ -28,8 +27,9 @@ namespace
         return String("estufa/") + MQTT_NAMESPACE + "/" + DEVICE_ID;
     }
 
-    #if ESTUFA_HAS_PUBSUBCLIENT
-    PubSubClient& mqttClientRef() {
+#if ESTUFA_HAS_PUBSUBCLIENT
+    PubSubClient &mqttClientRef()
+    {
         static PubSubClient client(wifiClient);
         return client;
     }
@@ -52,7 +52,7 @@ namespace
 
         Serial.printf("[MQTT][RX] %s => %s\n", topic, raw.c_str());
 
-        StaticJsonDocument<1024> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, raw);
         if (error)
         {
@@ -71,9 +71,10 @@ namespace
     {
         if (!isWiFiConnected())
             return false;
-        
-        PubSubClient& client = mqttClientRef();
-        if (client.connected()) return true;
+
+        PubSubClient &client = mqttClientRef();
+        if (client.connected())
+            return true;
 
         client.setServer(MQTT_BROKER, MQTT_PORT);
         client.setCallback(onMqttMessage);
@@ -84,11 +85,14 @@ namespace
         if (strlen(MQTT_USER) > 0)
         {
             connected = client.connect(DEVICE_ID, MQTT_USER, MQTT_PASSWORD, topicStatus().c_str(), 0, true, "{\"online\":false}");
-        } else {
+        }
+        else
+        {
             connected = client.connect(DEVICE_ID, topicStatus().c_str(), 0, true, "{\"online\":false}");
         }
 
-        if (!connected) {
+        if (!connected)
+        {
             Serial.printf("[MQTT][WARN] Falha na conexao, state=%d\n", client.state());
             return false;
         }
@@ -117,90 +121,91 @@ namespace
                       topicGeneralCommand().c_str());
         return true;
     }
-    #endif
+#endif
 }
 
 void setupMqtt(MqttCommandCallback callback)
 {
     commandCallback = callback;
-    #if ESTUFA_HAS_PUBSUBCLIENT
+#if ESTUFA_HAS_PUBSUBCLIENT
     connectMqtt();
-    #else
-        Serial.println("[MQTT][WARN] PubSubClient.h desabilitado/ausente; MQTT desabilitado nesta compilacao.");
-    #endif
+#else
+    Serial.println("[MQTT][WARN] PubSubClient.h desabilitado/ausente; MQTT desabilitado nesta compilacao.");
+#endif
 }
 
 void mqttLoop()
 {
-    #if ESTUFA_HAS_PUBSUBCLIENT
-        PubSubClient& client = mqttClientRef();
-        if (!client.connected()) {
-            if (millis() - lastReconnectAttemptMs > 5000UL)
-            {
-                lastReconnectAttemptMs = millis();
-                connectMqtt();
-            }
-            return;
+#if ESTUFA_HAS_PUBSUBCLIENT
+    PubSubClient &client = mqttClientRef();
+    if (!client.connected())
+    {
+        if (millis() - lastReconnectAttemptMs > 5000UL)
+        {
+            lastReconnectAttemptMs = millis();
+            connectMqtt();
         }
+        return;
+    }
     client.loop();
-    #else
-        (void)lastReconnectAttemptMs;
-    #endif
+#else
+    (void)lastReconnectAttemptMs;
+#endif
 }
 
 bool publishTelemetry(const String &payloadJson)
 {
-    #if ESTUFA_HAS_PUBSUBCLIENT
+#if ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
     return mqttClientRef().publish(topicTelemetry().c_str(), payloadJson.c_str());
-    #else
-        (void)payloadJson;
-        return false;
-    #endif
+#else
+    (void)payloadJson;
+    return false;
+#endif
 }
 
 bool publishStatus(bool online)
 {
-    #if ESTUFA_HAS_PUBSUBCLIENT
+#if ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
     String payload = String("{\"online\":") + (online ? "true" : "false") + ",\"ip\":\"" + localIpString() + "\"}";
     return mqttClientRef().publish(topicStatus().c_str(), payload.c_str(), true);
-    #else
-        (void)online;
-        return false;
-    #endif
+#else
+    (void)online;
+    return false;
+#endif
 }
 
 bool publishCameraEvent(const String &payloadJson)
 {
-    #if ESTUFA_HAS_PUBSUBCLIENT
+#if ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
     return mqttClientRef().publish(topicCamera().c_str(), payloadJson.c_str());
-    #else
-        (void)payloadJson;
-        return false;
-    #endif
+#else
+    (void)payloadJson;
+    return false;
+#endif
 }
 
 bool isMqttConnected()
 {
-    #if ESTUFA_HAS_PUBSUBCLIENT
+#if ESTUFA_HAS_PUBSUBCLIENT
     return mqttClientRef().connected();
-    #else
-        return false;
-    #endif
+#else
+    return false;
+#endif
 }
 
 int mqttConnectionState()
 {
-    #if ESTUFA_HAS_PUBSUBCLIENT
+#if ESTUFA_HAS_PUBSUBCLIENT
     return mqttClientRef().state();
-    #else
-        return -99;
-    #endif
+#else
+    return -99;
+#endif
 }
 
 String mqttCommandTopic()

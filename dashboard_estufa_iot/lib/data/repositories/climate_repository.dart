@@ -40,4 +40,46 @@ class ClimateRepository {
       ),
     );
   }
+
+  Future<void> setFan(String deviceId, bool enabled) async {
+    await _commandRepository.sendCommand(
+      deviceId,
+      CommandRequest(
+        comando: 'ventilar',
+        status: enabled,
+        origem: 'flutter_climate_card',
+        extraPayload: const {
+          'reason': 'manual_flutter_climate_fan',
+          'fan_timeout_ms': 30000,
+        },
+      ),
+    );
+  }
+
+  Future<void> configureFanAutomation(
+    String deviceId, {
+    required double temperatureThresholdC,
+    required int checkIntervalMinutes,
+  }) async {
+    final safeIntervalMinutes = checkIntervalMinutes < 1
+        ? 1
+        : checkIntervalMinutes;
+    await _commandRepository.sendCommand(
+      deviceId,
+      CommandRequest(
+        comando: 'configurar_clima',
+        status: true,
+        origem: 'flutter_climate_card',
+        extraPayload: {
+          'reason': 'config_fan_flutter',
+          'fan_temp_threshold_c': temperatureThresholdC,
+          'temperatura_limite_c': temperatureThresholdC,
+          'fan_check_interval_ms': safeIntervalMinutes * 60 * 1000,
+          'intervalo_verificacao_ms': safeIntervalMinutes * 60 * 1000,
+          'fan_timeout_ms': 30000,
+          'timeout_ventoinha_ms': 30000,
+        },
+      ),
+    );
+  }
 }

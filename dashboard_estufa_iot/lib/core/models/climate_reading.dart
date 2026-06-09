@@ -18,6 +18,13 @@ class ClimateReading {
   final bool lampOn;
   final String lampReason;
   final bool manualOverrideActive;
+  final bool fanOn;
+  final String fanReason;
+  final bool autoFanTriggered;
+  final bool fanEvent;
+  final double? fanTempThresholdC;
+  final int? fanCheckIntervalMs;
+  final int? fanTimeoutMs;
   final bool hdc1080Available;
   final double? temperatureC;
   final double? humidityPercent;
@@ -32,6 +39,10 @@ class ClimateReading {
     required this.lampOn,
     required this.lampReason,
     required this.manualOverrideActive,
+    required this.fanOn,
+    required this.fanReason,
+    required this.autoFanTriggered,
+    required this.fanEvent,
     required this.hdc1080Available,
     required this.raw,
     this.createdAt,
@@ -39,6 +50,9 @@ class ClimateReading {
     this.ldrRaw,
     this.ldrPercent,
     this.lightThresholdRaw,
+    this.fanTempThresholdC,
+    this.fanCheckIntervalMs,
+    this.fanTimeoutMs,
     this.temperatureC,
     this.humidityPercent,
   });
@@ -73,6 +87,13 @@ class ClimateReading {
       lampOn: _asBool(data['lamp_on']),
       lampReason: _asString(data['lamp_reason'], fallback: 'unknown'),
       manualOverrideActive: _asBool(data['manual_override_active']),
+      fanOn: _asBool(data['fan_on']),
+      fanReason: _asString(data['fan_reason'], fallback: 'unknown'),
+      autoFanTriggered: _asBool(data['auto_fan_triggered']),
+      fanEvent: _asBool(data['fan_event']),
+      fanTempThresholdC: _asDouble(data['fan_temp_threshold_c']),
+      fanCheckIntervalMs: _asInt(data['fan_check_interval_ms']),
+      fanTimeoutMs: _asInt(data['fan_timeout_ms']),
       hdc1080Available: _asBool(data['hdc1080_available']),
       temperatureC: _asDouble(data['temp_c']),
       humidityPercent: _asDouble(data['humidity_percent']),
@@ -94,6 +115,24 @@ class ClimateReading {
   String get formattedHumidity => humidityPercent == null
       ? '-- %'
       : '${humidityPercent!.toStringAsFixed(1)} %';
+
+  String get formattedFanThreshold => fanTempThresholdC == null
+      ? '-- °C'
+      : '${fanTempThresholdC!.toStringAsFixed(1)} °C';
+
+  String get formattedFanCheckInterval {
+    final value = fanCheckIntervalMs;
+    if (value == null || value <= 0) return '-- min';
+    final minutes = value / 60000.0;
+    return '${minutes.toStringAsFixed(minutes >= 10 ? 0 : 1)} min';
+  }
+
+  String get formattedFanTimeout {
+    final value = fanTimeoutMs;
+    if (value == null || value <= 0) return '-- s';
+    final seconds = value / 1000.0;
+    return '${seconds.toStringAsFixed(seconds >= 10 ? 0 : 1)} s';
+  }
 
   static String _asString(Object? value, {String fallback = ''}) {
     if (value == null) return fallback;

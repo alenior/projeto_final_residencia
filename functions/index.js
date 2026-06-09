@@ -56,6 +56,7 @@ function cameraProxyUrl(path) {
   return `${base}?path=${encodeURIComponent(path)}`;
 }
 
+
 function numberOrNull(value) {
   if (value === undefined || value === null || value === '') return null;
   const parsed = Number(value);
@@ -113,6 +114,7 @@ exports.ingestMqttEvent = onRequest({ invoker: 'public' }, async (req, res) => {
   }
 });
 
+
 // ESP32 -> HTTPS -> Firestore climate history.
 // Grava leituras do LDR/HDC1080 em devices/{deviceId}/climate e registra evento quando a iluminacao e acionada por baixa luminosidade.
 exports.ingestClimateReading = onRequest({ invoker: 'public', timeoutSeconds: 30, memory: '256Mi' }, async (req, res) => {
@@ -152,6 +154,13 @@ exports.ingestClimateReading = onRequest({ invoker: 'public', timeoutSeconds: 30
       lamp_on: boolOrFalse(body.lamp_on),
       lamp_reason: body.lamp_reason || 'unknown',
       manual_override_active: boolOrFalse(body.manual_override_active),
+      fan_on: boolOrFalse(body.fan_on),
+      fan_reason: body.fan_reason || 'unknown',
+      auto_fan_triggered: boolOrFalse(body.auto_fan_triggered),
+      fan_event: boolOrFalse(body.fan_event),
+      fan_temp_threshold_c: numberOrNull(body.fan_temp_threshold_c),
+      fan_check_interval_ms: numberOrNull(body.fan_check_interval_ms),
+      fan_timeout_ms: numberOrNull(body.fan_timeout_ms),
       hdc1080_available: boolOrFalse(body.hdc1080_available),
       temp_c: numberOrNull(body.temp_c),
       humidity_percent: numberOrNull(body.humidity_percent),
@@ -177,7 +186,32 @@ exports.ingestClimateReading = onRequest({ invoker: 'public', timeoutSeconds: 30
       });
     }
 
-    logger.info('Leitura de clima gravada', { deviceId, readingId: docRef.id, ldrRaw: reading.ldr_raw, lampOn: reading.lamp_on });
+    if (reading.fan_event || reading.auto_fan_triggered) {
+      await base.collection('events').add({
+        kind: reading.auto_fan_triggered ? 'fan_on_high_temperature' : `fan_${reading.fan_reason}`,
+        namespace,
+        fan_on: reading.fan_on,
+        fan_reason: reading.fan_reason,
+        temp_c: reading.temp_c,
+        fan_temp_threshold_c: reading.fan_temp_threshold_c,
+        fan_check_interval_ms: reading.fan_check_interval_ms,
+        fan_timeout_ms: reading.fan_timeout_ms,
+        message: reading.auto_fan_triggered
+          ? 'Temperatura acima do limite; ventoinha acionada automaticamente.'
+          : `Evento da ventoinha registrado: ${reading.fan_reason}.`,
+        created_at: now,
+        climate_reading_id: docRef.id,
+      });
+    }
+
+    logger.info('Leitura de clima gravada', {
+      deviceId,
+      readingId: docRef.id,
+      ldrRaw: reading.ldr_raw,
+      lampOn: reading.lamp_on,
+      fanOn: reading.fan_on,
+      fanReason: reading.fan_reason,
+    });
     return res.status(200).json({ ok: true, readingId: docRef.id });
   } catch (err) {
     logger.error('ingestClimateReading error', err);
@@ -340,6 +374,12 @@ exports.dispatchCommandToMqtt = onDocumentCreated('devices/{deviceId}/commands/{
     'duration_ms',
     'manual_override_ms',
     'lamp_reason',
+    'fan_temp_threshold_c',
+    'temperatura_limite_c',
+    'fan_check_interval_ms',
+    'intervalo_verificacao_ms',
+    'fan_timeout_ms',
+    'timeout_ventoinha_ms',
   ]);
 
   if (!payload.comando) {
