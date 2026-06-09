@@ -59,6 +59,31 @@
 #define CAMERA_DIAGNOSTICS_USE_NVS false
 #endif
 
+#ifndef CAMERA_BRIGHTNESS
+#define CAMERA_BRIGHTNESS 0
+#endif
+#ifndef CAMERA_CONTRAST
+#define CAMERA_CONTRAST 1
+#endif
+#ifndef CAMERA_SATURATION
+#define CAMERA_SATURATION 0
+#endif
+#ifndef CAMERA_AE_LEVEL
+#define CAMERA_AE_LEVEL 0
+#endif
+#ifndef CAMERA_ENABLE_LENC
+#define CAMERA_ENABLE_LENC true
+#endif
+#ifndef CAMERA_ENABLE_RAW_GMA
+#define CAMERA_ENABLE_RAW_GMA true
+#endif
+#ifndef CAMERA_ENABLE_AWB_GAIN
+#define CAMERA_ENABLE_AWB_GAIN true
+#endif
+#ifndef CAMERA_ENABLE_AEC2
+#define CAMERA_ENABLE_AEC2 true
+#endif
+
 namespace
 {
     Preferences prefs;
@@ -502,6 +527,31 @@ bool initCamera()
                       sensor->id.MIDL);
         sensor->set_framesize(sensor, CAMERA_FRAME_SIZE);
         sensor->set_quality(sensor, CAMERA_JPEG_QUALITY);
+        if (sensor->set_brightness)
+            sensor->set_brightness(sensor, CAMERA_BRIGHTNESS);
+        if (sensor->set_contrast)
+            sensor->set_contrast(sensor, CAMERA_CONTRAST);
+        if (sensor->set_saturation)
+            sensor->set_saturation(sensor, CAMERA_SATURATION);
+        if (sensor->set_ae_level)
+            sensor->set_ae_level(sensor, CAMERA_AE_LEVEL);
+        if (sensor->set_lenc)
+            sensor->set_lenc(sensor, CAMERA_ENABLE_LENC ? 1 : 0);
+        if (sensor->set_raw_gma)
+            sensor->set_raw_gma(sensor, CAMERA_ENABLE_RAW_GMA ? 1 : 0);
+        if (sensor->set_awb_gain)
+            sensor->set_awb_gain(sensor, CAMERA_ENABLE_AWB_GAIN ? 1 : 0);
+        if (sensor->set_aec2)
+            sensor->set_aec2(sensor, CAMERA_ENABLE_AEC2 ? 1 : 0);
+        Serial.printf("[CAMERA][QUALIDADE] brightness=%d contrast=%d saturation=%d ae_level=%d lenc=%s raw_gma=%s awb_gain=%s aec2=%s\n",
+                      CAMERA_BRIGHTNESS,
+                      CAMERA_CONTRAST,
+                      CAMERA_SATURATION,
+                      CAMERA_AE_LEVEL,
+                      CAMERA_ENABLE_LENC ? "on" : "off",
+                      CAMERA_ENABLE_RAW_GMA ? "on" : "off",
+                      CAMERA_ENABLE_AWB_GAIN ? "on" : "off",
+                      CAMERA_ENABLE_AEC2 ? "on" : "off");
     }
 
     cameraReady = true;
