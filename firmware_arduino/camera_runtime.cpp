@@ -56,6 +56,9 @@
 #ifndef CAMERA_UPLOAD_CHUNK_BYTES
 #define CAMERA_UPLOAD_CHUNK_BYTES 1024UL
 #endif
+#ifndef CAMERA_DIAGNOSTICS_USE_NVS
+#define CAMERA_DIAGNOSTICS_USE_NVS false
+#endif
 
 namespace
 {
@@ -67,7 +70,15 @@ namespace
 
     void saveCameraDiagnostic(const char *stage, int status = 0)
     {
-        diagPrefs.begin("camdiag", false);
+        if (!CAMERA_DIAGNOSTICS_USE_NVS)
+            return;
+
+        if (!diagPrefs.begin("camdiag", false))
+        {
+            Serial.println("[CAMERA][DIAG][WARN] Nao foi possivel abrir NVS para gravar diagnostico.");
+            return;
+        }
+
         diagPrefs.putString("stage", stage);
         diagPrefs.putInt("status", status);
         diagPrefs.putUInt("heap", ESP.getFreeHeap());
@@ -368,7 +379,18 @@ namespace
 
 void printCameraUploadDiagnostic()
 {
-    diagPrefs.begin("camdiag", true);
+    if (!CAMERA_DIAGNOSTICS_USE_NVS)
+    {
+        Serial.println("[CAMERA][LAST] diagnostico NVS desabilitado (CAMERA_DIAGNOSTICS_USE_NVS=false).");
+        return;
+    }
+
+    if (!diagPrefs.begin("camdiag", true))
+    {
+        Serial.println("[CAMERA][LAST][WARN] Nao foi possivel abrir NVS camdiag.");
+        return;
+    }
+
     const String stage = diagPrefs.getString("stage", "nenhum");
     const int status = diagPrefs.getInt("status", 0);
     const uint32_t heap = diagPrefs.getUInt("heap", 0);

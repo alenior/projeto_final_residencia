@@ -97,7 +97,7 @@ O firmware Arduino registra o PID do sensor, pinout configurado, parâmetros de 
 
 Se a captura mostra `Captura OK`, mas o ESP32-S3 reinicia durante ou logo após o upload HTTPS, mantenha `CAMERA_COPY_FRAME_BEFORE_UPLOAD true` e `CAMERA_DEINIT_BEFORE_UPLOAD true`. Com isso, o firmware copia o JPEG para um buffer próprio, libera o framebuffer da câmera e desinicializa o driver antes da conexão TLS/HTTP, reduzindo consumo e disputa de memória entre câmera, Wi-Fi e TLS.
 
-O firmware também prioriza buffer interno para imagens pequenas com `CAMERA_UPLOAD_BUFFER_INTERNAL_MAX_BYTES`, aguarda `CAMERA_PRE_UPLOAD_SETTLE_MS` antes do HTTPS e `CAMERA_POST_UPLOAD_SETTLE_MS` depois do fechamento da conexão. Esses intervalos ajudam quando o reset ocorre por pico de consumo ou instabilidade entre câmera, PSRAM, Wi-Fi e TLS. O boot imprime `Reset reason=...` e `[CAMERA][LAST] stage=...`; use esses campos para saber se a reinicialização ocorreu em `frame_copied`, `camera_deinit_before_upload`, `http_post_start`, `http_post_done`, `upload_success` ou outro estágio. Se ainda reiniciar, verifique alimentação: câmera + Wi-Fi ativo podem causar queda momentânea de tensão mesmo quando a captura isolada funciona.
+O firmware também prioriza buffer interno para imagens pequenas com `CAMERA_UPLOAD_BUFFER_INTERNAL_MAX_BYTES`, aguarda `CAMERA_PRE_UPLOAD_SETTLE_MS` antes do HTTPS e `CAMERA_POST_UPLOAD_SETTLE_MS` depois do fechamento da conexão. Esses intervalos ajudam quando o reset ocorre por pico de consumo ou instabilidade entre câmera, PSRAM, Wi-Fi e TLS. O boot imprime checkpoints com `Serial.flush()` (`[BOOT] ...`) para mostrar exatamente em qual etapa a inicialização parou. Por padrão, `CAMERA_DIAGNOSTICS_USE_NVS` fica `false` para evitar acesso a `Preferences`/NVS logo no boot; se você precisar recuperar o último estágio persistido (`frame_copied`, `camera_deinit_before_upload`, `http_post_start`, `http_post_done`, `upload_success` etc.), altere temporariamente esse macro para `true` no `config.h`. Se ainda reiniciar, verifique alimentação: câmera + Wi-Fi ativo podem causar queda momentânea de tensão mesmo quando a captura isolada funciona.
 
 ## Boas práticas elétricas
 
@@ -119,7 +119,7 @@ O problema do firmware estará resolvido quando:
 
 ## Upload HTTPS em chunks
 
-Se o monitor serial mostrar `Reset reason=4(PANIC)` com último estágio `http_post_start`, mantenha `CAMERA_UPLOAD_USE_HTTPCLIENT false` no `config.h`. Esse modo envia o JPEG por `WiFiClientSecure` em chunks (`CAMERA_UPLOAD_CHUNK_BYTES`, padrão 1024 bytes), reduzindo pressão de heap durante o POST para a Cloud Function.
+Se o monitor serial mostrar `Reset reason=4(PANIC)` com último estágio `http_post_start` quando `CAMERA_DIAGNOSTICS_USE_NVS true` estiver ativo, mantenha `CAMERA_UPLOAD_USE_HTTPCLIENT false` no `config.h`. Esse modo envia o JPEG por `WiFiClientSecure` em chunks (`CAMERA_UPLOAD_CHUNK_BYTES`, padrão 1024 bytes), reduzindo pressão de heap durante o POST para a Cloud Function.
 
 
 ## Observação sobre build incremental da Arduino IDE

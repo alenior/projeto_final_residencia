@@ -38,6 +38,12 @@ unsigned long lastCameraButtonCaptureMs = 0;
 bool lastCameraButtonReading = !CAMERA_BUTTON_ACTIVE_LOW;
 bool stableCameraButtonState = !CAMERA_BUTTON_ACTIVE_LOW;
 
+void flushBootLog()
+{
+    Serial.flush();
+    delay(10);
+}
+
 const char *resetReasonName(esp_reset_reason_t reason)
 {
     switch (reason)
@@ -147,7 +153,8 @@ void handleCommand(JsonObject command)
 
     Serial.printf("[CMD] comando=%s status=%s\n", action, status ? "true" : "false");
 
-    if (handleClimateCommand(command)) {
+    if (handleClimateCommand(command))
+    {
         return;
     }
 
@@ -181,24 +188,45 @@ void setup()
     Serial.begin(115200);
     delay(500);
     Serial.println("\n==================== BOOT ARDUINO ====================");
+    flushBootLog();
     Serial.printf("EstufaIoT Arduino firmware device=%s namespace=%s\n", DEVICE_ID, MQTT_NAMESPACE);
+    flushBootLog();
     const esp_reset_reason_t resetReason = esp_reset_reason();
     Serial.printf("Reset reason=%d(%s)\n", static_cast<int>(resetReason), resetReasonName(resetReason));
+    flushBootLog();
+    Serial.println("[BOOT] Verificando ultimo diagnostico da camera...");
+    flushBootLog();
     printCameraUploadDiagnostic();
+    flushBootLog();
     Serial.printf("GPIOs -> bomba:%d lampada_led:%d pir:%d solo:%d ldr:%d ventoinha:%d botao_camera:%d\n",
                   PIN_RELE_BOMBA, PIN_RELE_LAMPADA, PIN_PIR, PIN_SOLO_ADC, PIN_LDR_ADC, PIN_VENTOINHA, PIN_BOTAO_CAMERA);
     Serial.printf("Heap=%lu PSRAM livre=%lu\n",
                   static_cast<unsigned long>(ESP.getFreeHeap()),
                   static_cast<unsigned long>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     Serial.println("======================================================");
+    flushBootLog();
 
+    Serial.println("[BOOT] Inicializando atuadores...");
+    flushBootLog();
     setupActuators();
     setupLocalCaptureButton();
+    Serial.println("[BOOT] Conectando Wi-Fi...");
+    flushBootLog();
     setupWiFi();
+    Serial.println("[BOOT] Sincronizando horario...");
+    flushBootLog();
     setupTimeSync();
+    Serial.println("[BOOT] Inicializando clima...");
+    flushBootLog();
     setupClimateManager();
+    Serial.println("[BOOT] Inicializando camera...");
+    flushBootLog();
     setupCameraManager();
+    Serial.println("[BOOT] Inicializando MQTT...");
+    flushBootLog();
     setupMqtt(handleCommand);
+    Serial.println("[BOOT] Setup concluido.");
+    flushBootLog();
 }
 
 void loop()
