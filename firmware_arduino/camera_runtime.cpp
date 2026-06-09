@@ -14,7 +14,6 @@
 #define ESTUFA_HAS_ESP_CAMERA 0
 #define CAMERA_GRAB_WHEN_EMPTY 0
 #endif
-#include <esp_camera.h>
 #include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
 
@@ -39,7 +38,9 @@
 #ifndef CAMERA_CAPTURE_RETRY_DELAY_MS
 #define CAMERA_CAPTURE_RETRY_DELAY_MS 700UL
 #endif
+
 #if ESTUFA_HAS_ESP_CAMERA
+
 #ifndef CAMERA_UPLOAD_BUFFER_INTERNAL_MAX_BYTES
 #define CAMERA_UPLOAD_BUFFER_INTERNAL_MAX_BYTES 65536UL
 #endif
@@ -48,6 +49,12 @@
 #endif
 #ifndef CAMERA_POST_UPLOAD_SETTLE_MS
 #define CAMERA_POST_UPLOAD_SETTLE_MS 500UL
+#endif
+#ifndef CAMERA_UPLOAD_USE_HTTPCLIENT
+#define CAMERA_UPLOAD_USE_HTTPCLIENT false
+#endif
+#ifndef CAMERA_UPLOAD_CHUNK_BYTES
+#define CAMERA_UPLOAD_CHUNK_BYTES 1024UL
 #endif
 
 namespace
@@ -111,6 +118,170 @@ namespace
         if (buffer != nullptr && memoryKind != nullptr)
             *memoryKind = "PSRAM";
         return buffer;
+    }
+
+    bool parseHttpsUrl(const char *url, String *host, uint16_t *port, String *path)
+    {
+        const String value(url);
+        const String prefix = "https://";
+        if (!value.startsWith(prefix))
+            return false;
+
+        const int hostStart = prefix.length();
+        int pathStart = value.indexOf('/', hostStart);
+        if (pathStart < 0)
+            pathStart = value.length();
+
+        String hostPort = value.substring(hostStart, pathStart);
+        const int colon = hostPort.indexOf(':');
+        if (colon >= 0)
+        {
+            *host = hostPort.substring(0, colon);
+            *port = static_cast<uint16_t>(hostPort.substring(colon + 1).toInt());
+            if (*port == 0)
+                *port = 443;
+        }
+        else
+        {
+            *host = hostPort;
+            *port = 443;
+        }
+
+        *path = pathStart < value.length() ? value.substring(pathStart) : "/";
+        return host->length() > 0 && path->length() > 0;
+    }
+
+    bool readHttpsResponse(WiFiClientSecure &client, int *statusCode, String *responsePreview)
+    {
+        const unsigned long deadline = millis() + CAMERA_HTTP_TIMEOUT_MS;
+        while (client.connected() && !client.available() && millis() < deadline)
+        {
+            cameraYield();
+            delay(10);
+        }
+
+        if (!client.available())
+        {
+            *statusCode = -1;
+            *responsePreview = "sem resposta HTTP";
+            return false;
+        }
+
+        const String statusLine = client.readStringUntil('\n');
+        int parsedStatus = -1;
+        if (statusLine.startsWith("HTTP/"))
+        {
+            const int firstSpace = statusLine.indexOf(' ');
+            if (firstSpace > 0)
+                parsedStatus = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
+        }
+        *statusCode = parsedStatus;
+
+        bool inBody = false;
+        uint8_t crlfCount = 0;
+        responsePreview->reserve(180);
+        while ((client.connected() || client.available()) && millis() < deadline && responsePreview->length() < 180)
+        {
+            while (client.available() && responsePreview->length() < 180)
+            {
+                const char c = static_cast<char>(client.read());
+                if (!inBody)
+                {
+                    if (c == '\r')
+                        continue;
+                    if (c == '\n')
+                    {
+                        crlfCount++;
+                        if (crlfCount >= 2)
+                            inBody = true;
+                    }
+                    else
+                    {
+                        crlfCount = 0;
+                    }
+                }
+                else
+                {
+                    *responsePreview += c;
+                }
+            }
+            cameraYield();
+        }
+
+        if (responsePreview->length() == 0)
+            *responsePreview = statusLine;
+        return parsedStatus >= 200 && parsedStatus < 300;
+    }
+
+    bool uploadJpegManualHttps(
+        const uint8_t *imageData,
+        size_t imageLength,
+        const String &filename,
+        const char *reason,
+        const String &capturedAt,
+        int *statusCode,
+        String *responsePreview)
+    {
+        String host;
+        String path;
+        uint16_t port = 443;
+        if (!parseHttpsUrl(CAMERA_UPLOAD_URL, &host, &port, &path))
+        {
+            *statusCode = -2;
+            *responsePreview = "CAMERA_UPLOAD_URL precisa iniciar com https://";
+            return false;
+        }
+
+        WiFiClientSecure client;
+        client.setInsecure(); // Prototipo: substitua por CA raiz em producao.
+        client.setTimeout(CAMERA_HTTP_TIMEOUT_MS / 1000);
+
+        saveCameraDiagnostic("https_connect_start", static_cast<int>(imageLength));
+        if (!client.connect(host.c_str(), port))
+        {
+            *statusCode = -3;
+            *responsePreview = "falha ao conectar no host HTTPS";
+            client.stop();
+            return false;
+        }
+
+        saveCameraDiagnostic("https_headers_start", static_cast<int>(imageLength));
+        client.printf("POST %s HTTP/1.1\r\n", path.c_str());
+        client.printf("Host: %s\r\n", host.c_str());
+        client.print("Connection: close\r\n");
+        client.printf("Content-Type: %s\r\n", CAMERA_CONTENT_TYPE);
+        client.printf("Content-Length: %u\r\n", static_cast<unsigned>(imageLength));
+        client.printf("x-camera-upload-token: %s\r\n", CAMERA_UPLOAD_TOKEN);
+        client.printf("x-device-id: %s\r\n", DEVICE_ID);
+        client.printf("x-namespace: %s\r\n", MQTT_NAMESPACE);
+        client.printf("x-filename: %s\r\n", filename.c_str());
+        client.printf("x-reason: %s\r\n", reason);
+        client.printf("x-captured-at: %s\r\n", capturedAt.c_str());
+        client.print("\r\n");
+
+        saveCameraDiagnostic("https_write_start", static_cast<int>(imageLength));
+        size_t offset = 0;
+        while (offset < imageLength)
+        {
+            const size_t remaining = imageLength - offset;
+            const size_t chunk = remaining < CAMERA_UPLOAD_CHUNK_BYTES ? remaining : CAMERA_UPLOAD_CHUNK_BYTES;
+            const size_t written = client.write(imageData + offset, chunk);
+            if (written == 0)
+            {
+                *statusCode = -4;
+                *responsePreview = "falha ao escrever chunk HTTPS";
+                client.stop();
+                return false;
+            }
+            offset += written;
+            cameraYield();
+        }
+        client.flush();
+
+        saveCameraDiagnostic("https_response_wait", static_cast<int>(imageLength));
+        const bool ok = readHttpsResponse(client, statusCode, responsePreview);
+        client.stop();
+        return ok;
     }
 
     bool jsonBoolOr(JsonObject command, const char *a, const char *b, const char *c, bool fallback)
@@ -391,7 +562,6 @@ bool captureAndUpload(const char *reason)
             Serial.printf("[CAMERA] Frame copiado para buffer de upload: bytes=%u memoria=%s heap=%lu psram=%lu\n",
                           static_cast<unsigned>(imageLength),
                           memoryKind,
-                          static_cast<unsigned>(imageLength),
                           static_cast<unsigned long>(ESP.getFreeHeap()),
                           static_cast<unsigned long>(ESP.getFreePsram()));
             saveCameraDiagnostic("frame_copied", static_cast<int>(imageLength));
@@ -411,45 +581,60 @@ bool captureAndUpload(const char *reason)
         }
     }
 
-    WiFiClientSecure client;
-    client.setInsecure(); // Prototipo: substitua por CA raiz em producao.
+    int status = 0;
+    String response;
+    bool ok = false;
 
-    HTTPClient http;
-    http.setReuse(false);
-    http.setTimeout(CAMERA_HTTP_TIMEOUT_MS);
-    http.useHTTP10(true);
-    if (!http.begin(client, CAMERA_UPLOAD_URL))
-    {
-        Serial.println("[CAMERA][UPLOAD][ERRO] http.begin falhou.");
-        saveCameraDiagnostic("http_begin_failed");
-        if (fb != nullptr)
-            esp_camera_fb_return(fb);
-        if (copiedImage != nullptr)
-            free(copiedImage);
-        return false;
-    }
-
-    http.addHeader("Content-Type", CAMERA_CONTENT_TYPE);
-    http.addHeader("x-camera-upload-token", CAMERA_UPLOAD_TOKEN);
-    http.addHeader("x-device-id", DEVICE_ID);
-    http.addHeader("x-namespace", MQTT_NAMESPACE);
-    http.addHeader("x-filename", filename);
-    http.addHeader("x-reason", reason);
-    http.addHeader("x-captured-at", capturedAt);
     cameraYield();
-
-    saveCameraDiagnostic("http_post_start", static_cast<int>(imageLength));
-    Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u heap=%lu psram=%lu\n",
+    Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u modo=%s heap=%lu psram=%lu\n",
                   filename.c_str(),
                   static_cast<unsigned>(imageLength),
+                  CAMERA_UPLOAD_USE_HTTPCLIENT ? "HTTPClient" : "HTTPS_CHUNKED",
                   static_cast<unsigned long>(ESP.getFreeHeap()),
                   static_cast<unsigned long>(ESP.getFreePsram()));
-    const int status = http.POST(const_cast<uint8_t *>(imageData), imageLength);
-    saveCameraDiagnostic("http_post_done", status);
-    cameraYield();
-    const String response = http.getString();
-    http.end();
-    client.stop();
+
+    if (CAMERA_UPLOAD_USE_HTTPCLIENT)
+    {
+        WiFiClientSecure client;
+        client.setInsecure(); // Prototipo: substitua por CA raiz em producao.
+
+        HTTPClient http;
+        http.setReuse(false);
+        http.setTimeout(CAMERA_HTTP_TIMEOUT_MS);
+        http.useHTTP10(true);
+        if (!http.begin(client, CAMERA_UPLOAD_URL))
+        {
+            Serial.println("[CAMERA][UPLOAD][ERRO] http.begin falhou.");
+            saveCameraDiagnostic("http_begin_failed");
+            if (fb != nullptr)
+                esp_camera_fb_return(fb);
+            if (copiedImage != nullptr)
+                free(copiedImage);
+            return false;
+        }
+
+        http.addHeader("Content-Type", CAMERA_CONTENT_TYPE);
+        http.addHeader("x-camera-upload-token", CAMERA_UPLOAD_TOKEN);
+        http.addHeader("x-device-id", DEVICE_ID);
+        http.addHeader("x-namespace", MQTT_NAMESPACE);
+        http.addHeader("x-filename", filename);
+        http.addHeader("x-reason", reason);
+        http.addHeader("x-captured-at", capturedAt);
+
+        saveCameraDiagnostic("http_post_start", static_cast<int>(imageLength));
+        status = http.POST(const_cast<uint8_t *>(imageData), imageLength);
+        saveCameraDiagnostic("http_post_done", status);
+        cameraYield();
+        response = http.getString();
+        http.end();
+        client.stop();
+        ok = status >= 200 && status < 300;
+    }
+    else
+    {
+        ok = uploadJpegManualHttps(imageData, imageLength, filename, reason, capturedAt, &status, &response);
+    }
+
     if (fb != nullptr)
         esp_camera_fb_return(fb);
     if (copiedImage != nullptr)
@@ -462,7 +647,6 @@ bool captureAndUpload(const char *reason)
                   response.substring(0, 180).c_str(),
                   static_cast<unsigned long>(ESP.getFreeHeap()),
                   static_cast<unsigned long>(ESP.getFreePsram()));
-    const bool ok = status >= 200 && status < 300;
     saveCameraDiagnostic(ok ? "upload_success" : "upload_http_error", status);
     return ok;
 }
@@ -523,35 +707,42 @@ CameraScheduleConfig getCameraSchedule()
 
 #else
 
-void printCameraUploadDiagnostic() {
-  Serial.println("[CAMERA][WARN] esp_camera.h nao encontrado; suporte OV5640 desabilitado nesta compilacao.");
+void printCameraUploadDiagnostic()
+{
+    Serial.println("[CAMERA][WARN] esp_camera.h nao encontrado; suporte OV5640 desabilitado nesta compilacao.");
 }
 
-void setupCameraManager() {
-  Serial.println("[CAMERA][WARN] esp_camera.h nao encontrado. Instale/seleciona um core/placa ESP32 com esp32-camera para habilitar OV5640.");
+void setupCameraManager()
+{
+    Serial.println("[CAMERA][WARN] esp_camera.h nao encontrado. Instale/seleciona um core/placa ESP32 com esp32-camera para habilitar OV5640.");
 }
 
-bool initCamera() {
-  Serial.println("[CAMERA][ERRO] initCamera ignorado: esp_camera.h ausente.");
-  return false;
+bool initCamera()
+{
+    Serial.println("[CAMERA][ERRO] initCamera ignorado: esp_camera.h ausente.");
+    return false;
 }
 
-bool captureAndUpload(const char* reason) {
-  Serial.printf("[CAMERA][ERRO] Captura '%s' indisponivel: esp_camera.h ausente.\n", reason);
-  return false;
+bool captureAndUpload(const char *reason)
+{
+    Serial.printf("[CAMERA][ERRO] Captura '%s' indisponivel: esp_camera.h ausente.\n", reason);
+    return false;
 }
 
-bool isAutoCaptureDue() {
-  return false;
+bool isAutoCaptureDue()
+{
+    return false;
 }
 
-void updateCameraScheduleFromJson(JsonObject command) {
-  (void)command;
-  Serial.println("[CAMERA][WARN] Configuracao ignorada: esp_camera.h ausente.");
+void updateCameraScheduleFromJson(JsonObject command)
+{
+    (void)command;
+    Serial.println("[CAMERA][WARN] Configuracao ignorada: esp_camera.h ausente.");
 }
 
-CameraScheduleConfig getCameraSchedule() {
-  return CameraScheduleConfig{false, CAMERA_CAPTURE_HOUR, CAMERA_CAPTURE_MINUTE, CAMERA_CAPTURE_INTERVAL_HOURS};
+CameraScheduleConfig getCameraSchedule()
+{
+    return CameraScheduleConfig{false, CAMERA_CAPTURE_HOUR, CAMERA_CAPTURE_MINUTE, CAMERA_CAPTURE_INTERVAL_HOURS};
 }
 
 #endif

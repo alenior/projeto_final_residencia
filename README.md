@@ -83,7 +83,7 @@ Arquivos principais:
 - `firmware_arduino/wifi_manager.*` — Wi-Fi.
 - `firmware_arduino/time_manager.*` — NTP/hora local.
 - `firmware_arduino/mqtt_manager.*` — MQTT e comandos.
-- `firmware_arduino/camera_manager.*` — OV5640, agenda e upload para Firebase.
+- `firmware_arduino/camera_manager.h` + `firmware_arduino/camera_runtime.cpp` — OV5640, agenda e upload para Firebase.
 - `firmware_arduino/climate_manager.*` — LDR em GPIO1, HDC1080 no I2C0 (SDA 14/SCL 21), automação da lâmpada LED em GPIO48 e ventoinha em GPIO44 e envio de histórico para Firestore.
 - `firmware_arduino/actuators.*` — bomba, lâmpada LED, leituras básicas e compatibilidade com atuadores opcionais.
 

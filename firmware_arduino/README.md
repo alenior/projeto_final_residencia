@@ -10,7 +10,7 @@ Este diretório contém a migração do firmware para Arduino/C++ para viabiliza
 - `/workspace/projeto_final_residencia/firmware_arduino/wifi_manager.*` — equivalente ao `wifi.py`.
 - `/workspace/projeto_final_residencia/firmware_arduino/time_manager.*` — equivalente ao `sincronizar_horario.py`.
 - `/workspace/projeto_final_residencia/firmware_arduino/mqtt_manager.*` — equivalente ao `envio_e_recebimento_nuvem.py`.
-- `/workspace/projeto_final_residencia/firmware_arduino/camera_manager.*` — equivalente ao `captura_de_imagem.py`.
+- `/workspace/projeto_final_residencia/firmware_arduino/camera_manager.h` + `/workspace/projeto_final_residencia/firmware_arduino/camera_runtime.cpp` — equivalente ao `captura_de_imagem.py`.
 - `/workspace/projeto_final_residencia/firmware_arduino/climate_manager.*` — módulo clima com LDR, HDC1080, automação da lâmpada LED e envio ao Firebase.
 - `/workspace/projeto_final_residencia/firmware_arduino/actuators.*` — GPIOs de bomba, lâmpada LED, PIR e leituras ADC.
 
@@ -66,7 +66,7 @@ Comandos esperados:
 
 ## Módulo clima
 
-O LDR é lido em `PIN_LDR_ADC` (GPIO1, ADC de 12 bits, 0-4095). O HDC1080 usa I2C0 com `HDC1080_SDA_PIN 14`, `HDC1080_SCL_PIN 21`, frequência de 100 kHz e endereço `0x40`. A lâmpada LED usa `PIN_RELE_LAMPADA 44`; a ventoinha foi desabilitada no exemplo (`PIN_VENTOINHA -1`). A cada `CLIMATE_INTERVAL_MS` o firmware envia uma leitura para `CLIMATE_INGEST_URL` e liga automaticamente a lâmpada se `ldr_raw <= LDR_DARK_THRESHOLD_RAW`. O comando MQTT/Flutter `iluminar` aciona a iluminação manualmente e mantém override temporário por `CLIMATE_MANUAL_LIGHT_OVERRIDE_MS`.
+O LDR é lido em `PIN_LDR_ADC` (GPIO1, ADC de 12 bits, 0-4095). O HDC1080 usa I2C0 com `HDC1080_SDA_PIN 14`, `HDC1080_SCL_PIN 21`, frequência de 100 kHz e endereço `0x40`. A lâmpada LED usa `PIN_RELE_LAMPADA 48` e a ventoinha usa `PIN_VENTOINHA 44`. O upload da câmera usa envio HTTPS em chunks por padrão (`CAMERA_UPLOAD_USE_HTTPCLIENT false`) para evitar PANIC durante `HTTPClient.POST`; se precisar voltar ao caminho antigo, defina `CAMERA_UPLOAD_USE_HTTPCLIENT true`. A cada `CLIMATE_INTERVAL_MS` o firmware envia uma leitura para `CLIMATE_INGEST_URL` e liga automaticamente a lâmpada se `ldr_raw <= LDR_DARK_THRESHOLD_RAW`. A ventoinha é verificada a cada `CLIMATE_FAN_CHECK_INTERVAL_MS`, liga quando a temperatura atinge `CLIMATE_FAN_TEMP_THRESHOLD_C` (35 °C por padrão) e desliga pelo timeout de segurança `CLIMATE_FAN_TIMEOUT_MS` (30 s por padrão). Os comandos MQTT/Flutter `iluminar`, `ventilar` e `configurar_clima` permitem acionar iluminação, acionar ventoinha e ajustar limiar/periodicidade da ventoinha.
 
 ## Botão local de teste da câmera
 

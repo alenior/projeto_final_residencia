@@ -115,3 +115,13 @@ O problema do firmware estará resolvido quando:
 2. `captura_de_imagem.inicializar_camera_ov5640()` imprimir inicialização bem-sucedida.
 3. `captura_de_imagem.capturar_e_salvar(...)` salvar um arquivo `.jpg` localmente.
 4. Com `CAMERA_UPLOAD_URL` e `CAMERA_UPLOAD_TOKEN` corretos, a imagem aparecer no Firebase Storage em `devices/<deviceId>/images/` e no app Flutter na tela da câmera.
+
+
+## Upload HTTPS em chunks
+
+Se o monitor serial mostrar `Reset reason=4(PANIC)` com último estágio `http_post_start`, mantenha `CAMERA_UPLOAD_USE_HTTPCLIENT false` no `config.h`. Esse modo envia o JPEG por `WiFiClientSecure` em chunks (`CAMERA_UPLOAD_CHUNK_BYTES`, padrão 1024 bytes), reduzindo pressão de heap durante o POST para a Cloud Function.
+
+
+## Observação sobre build incremental da Arduino IDE
+
+A implementação da câmera fica em `camera_runtime.cpp`; não há mais `camera_manager.cpp` no sketch, justamente para impedir que a IDE gere/linke `camera_manager.cpp.o` antigo. Se o linker ainda mencionar `camera_manager.cpp.o` com funções de clima, apague a pasta temporária do sketch em `C:\Users\<usuario>\AppData\Local\arduino\sketches\...` ou use uma compilação limpa, pois esse sintoma indica objeto incremental antigo da IDE.
