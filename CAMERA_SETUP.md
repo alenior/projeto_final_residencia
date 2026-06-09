@@ -99,6 +99,10 @@ Se a captura mostra `Captura OK`, mas o ESP32-S3 reinicia durante ou logo após 
 
 O firmware também prioriza buffer interno para imagens pequenas com `CAMERA_UPLOAD_BUFFER_INTERNAL_MAX_BYTES`, aguarda `CAMERA_PRE_UPLOAD_SETTLE_MS` antes do HTTPS e `CAMERA_POST_UPLOAD_SETTLE_MS` depois do fechamento da conexão. Esses intervalos ajudam quando o reset ocorre por pico de consumo ou instabilidade entre câmera, PSRAM, Wi-Fi e TLS. O boot imprime checkpoints com `Serial.flush()` (`[BOOT] ...`) para mostrar exatamente em qual etapa a inicialização parou. Por padrão, `CAMERA_DIAGNOSTICS_USE_NVS` fica `false` para evitar acesso a `Preferences`/NVS logo no boot; se você precisar recuperar o último estágio persistido (`frame_copied`, `camera_deinit_before_upload`, `http_post_start`, `http_post_done`, `upload_success` etc.), altere temporariamente esse macro para `true` no `config.h`. Se ainda reiniciar, verifique alimentação: câmera + Wi-Fi ativo podem causar queda momentânea de tensão mesmo quando a captura isolada funciona.
 
+## Upload HTTPS do módulo clima
+
+O módulo clima também usa HTTPS para gravar o histórico em `ingestClimateReading`. Para reduzir reinicializações durante o envio no ESP32-S3, o padrão é `CLIMATE_UPLOAD_USE_HTTPCLIENT false`, que troca o `HTTPClient` por uma conexão `WiFiClientSecure` manual com corpo JSON enviado em blocos pequenos (`CLIMATE_UPLOAD_CHUNK_BYTES`, padrão 256 bytes). Se o monitor serial indicar reset durante `[CLIMA][UPLOAD]`, mantenha esse modo raw TLS, reduza temporariamente `CLIMATE_INTERVAL_MS` apenas para testes e confirme alimentação estável durante Wi-Fi/TLS.
+
 ## Boas práticas elétricas
 
 - Não alimente câmera, relés, bomba, lâmpada ou ventoinha a partir do 3V3 do ESP32 se a corrente total exceder a capacidade da placa.
@@ -119,7 +123,7 @@ O problema do firmware estará resolvido quando:
 
 ## Upload HTTPS em chunks
 
-Se o monitor serial mostrar `Reset reason=4(PANIC)` com último estágio `http_post_start` quando `CAMERA_DIAGNOSTICS_USE_NVS true` estiver ativo, mantenha `CAMERA_UPLOAD_USE_HTTPCLIENT false` no `config.h`. Esse modo envia o JPEG por `WiFiClientSecure` em chunks (`CAMERA_UPLOAD_CHUNK_BYTES`, padrão 1024 bytes), reduzindo pressão de heap durante o POST para a Cloud Function.
+Se o monitor serial mostrar `Reset reason=4(PANIC)` com último estágio `http_post_start` quando `CAMERA_DIAGNOSTICS_USE_NVS true` estiver ativo, mantenha `CAMERA_UPLOAD_USE_HTTPCLIENT false` no `config.h`. Esse modo envia o JPEG por `WiFiClientSecure` em chunks (`CAMERA_UPLOAD_CHUNK_BYTES`, padrão 1024 bytes), reduzindo pressão de heap durante o POST para a Cloud Function. Se aparecerem mensagens repetidas `task_wdt: esp_task_wdt_reset(...): task not found` durante a captura/upload, use a versão atual do `camera_runtime.cpp`: o firmware não chama mais `esp_task_wdt_reset()` diretamente e usa apenas `yield()`/`delay(1)` entre chunks para manter Wi-Fi/TLS cooperativos sem acionar esse aviso do Arduino-ESP32 3.x.
 
 
 ## Observação sobre build incremental da Arduino IDE

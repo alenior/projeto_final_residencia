@@ -53,6 +53,15 @@
 #ifndef CLIMATE_HTTP_TIMEOUT_MS
 #define CLIMATE_HTTP_TIMEOUT_MS 15000UL
 #endif
+#ifndef CLIMATE_UPLOAD_USE_HTTPCLIENT
+#define CLIMATE_UPLOAD_USE_HTTPCLIENT false
+#endif
+#ifndef CLIMATE_UPLOAD_CHUNK_BYTES
+#define CLIMATE_UPLOAD_CHUNK_BYTES 256UL
+#endif
+#ifndef CLIMATE_POST_UPLOAD_SETTLE_MS
+#define CLIMATE_POST_UPLOAD_SETTLE_MS 150UL
+#endif
 #ifndef LDR_ADC_MAX_VALUE
 #define LDR_ADC_MAX_VALUE 4095.0f
 #endif
@@ -302,20 +311,164 @@ namespace
         return output;
     }
 
-    bool postClimateReading(const ClimateRuntimeReading &reading)
+    void climateYield()
     {
-        if (strlen(CLIMATE_INGEST_URL) == 0)
-        {
-            Serial.println("[CLIMA][UPLOAD][WARN] CLIMATE_INGEST_URL vazio; leitura nao enviada ao Firebase.");
+        yield();
+        delay(1);
+    }
+
+    bool parseHttpsUrl(const char *url, String *host, uint16_t *port, String *path)
+    {
+        const String value(url);
+        const String prefix = "https://";
+        if (!value.startsWith(prefix))
             return false;
-        }
-        if (!isWiFiConnected())
+
+        const int hostStart = prefix.length();
+        int pathStart = value.indexOf('/', hostStart);
+        if (pathStart < 0)
+            pathStart = value.length();
+
+        String hostPort = value.substring(hostStart, pathStart);
+        const int colon = hostPort.indexOf(':');
+        if (colon >= 0)
         {
-            Serial.println("[CLIMA][UPLOAD][WARN] Wi-Fi indisponivel.");
+            *host = hostPort.substring(0, colon);
+            *port = static_cast<uint16_t>(hostPort.substring(colon + 1).toInt());
+            if (*port == 0)
+                *port = 443;
+        }
+        else
+        {
+            *host = hostPort;
+            *port = 443;
+        }
+
+        *path = pathStart < value.length() ? value.substring(pathStart) : "/";
+        return host->length() > 0 && path->length() > 0;
+    }
+
+    bool readClimateHttpsResponse(WiFiClientSecure &client, int *statusCode, String *responsePreview)
+    {
+        const unsigned long deadline = millis() + CLIMATE_HTTP_TIMEOUT_MS;
+        while (client.connected() && !client.available() && millis() < deadline)
+        {
+            climateYield();
+            delay(10);
+        }
+
+        if (!client.available())
+        {
+            *statusCode = -1;
+            *responsePreview = "timeout aguardando resposta";
             return false;
         }
 
-        const String payload = buildClimatePayload(reading);
+        const String statusLine = client.readStringUntil('\n');
+        int parsedStatus = -1;
+        if (statusLine.startsWith("HTTP/"))
+        {
+            const int firstSpace = statusLine.indexOf(' ');
+            if (firstSpace > 0)
+                parsedStatus = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
+        }
+
+        while (client.connected())
+        {
+            const String line = client.readStringUntil('\n');
+            if (line == "\r" || line.length() == 0)
+                break;
+            climateYield();
+        }
+
+        String body;
+        const unsigned long bodyDeadline = millis() + 1500UL;
+        while (millis() < bodyDeadline && body.length() < 160)
+        {
+            while (client.available() && body.length() < 160)
+            {
+                body += static_cast<char>(client.read());
+            }
+            if (!client.connected() && !client.available())
+                break;
+            climateYield();
+            delay(5);
+        }
+
+        *statusCode = parsedStatus;
+        *responsePreview = body.length() > 0 ? body : statusLine.substring(0, 160);
+        return parsedStatus >= 200 && parsedStatus < 300;
+    }
+
+    bool postClimateReadingWithRawTls(const ClimateRuntimeReading &reading, const String &payload)
+    {
+        (void)reading;
+
+        String host;
+        String path;
+        uint16_t port = 443;
+        if (!parseHttpsUrl(CLIMATE_INGEST_URL, &host, &port, &path))
+        {
+            Serial.println("[CLIMA][UPLOAD][ERRO] CLIMATE_INGEST_URL deve iniciar com https://.");
+            return false;
+        }
+
+        WiFiClientSecure client;
+        client.setInsecure();
+        client.setTimeout(CLIMATE_HTTP_TIMEOUT_MS / 1000UL);
+
+        Serial.printf("[CLIMA][UPLOAD] TLS raw host=%s bytes=%u chunk=%lu\n",
+                      host.c_str(),
+                      static_cast<unsigned>(payload.length()),
+                      static_cast<unsigned long>(CLIMATE_UPLOAD_CHUNK_BYTES));
+
+        if (!client.connect(host.c_str(), port))
+        {
+            Serial.println("[CLIMA][UPLOAD][ERRO] Falha ao conectar TLS.");
+            client.stop();
+            return false;
+        }
+
+        client.printf("POST %s HTTP/1.1\r\n", path.c_str());
+        client.printf("Host: %s\r\n", host.c_str());
+        client.print("Content-Type: application/json\r\n");
+        client.printf("Content-Length: %u\r\n", static_cast<unsigned>(payload.length()));
+        client.printf("x-camera-upload-token: %s\r\n", CLIMATE_UPLOAD_TOKEN);
+        client.printf("x-device-id: %s\r\n", DEVICE_ID);
+        client.printf("x-namespace: %s\r\n", MQTT_NAMESPACE);
+        client.print("Connection: close\r\n\r\n");
+
+        const char *data = payload.c_str();
+        size_t sent = 0;
+        while (sent < payload.length())
+        {
+            const size_t remaining = payload.length() - sent;
+            const size_t chunk = remaining < CLIMATE_UPLOAD_CHUNK_BYTES ? remaining : CLIMATE_UPLOAD_CHUNK_BYTES;
+            const size_t written = client.write(reinterpret_cast<const uint8_t *>(data + sent), chunk);
+            if (written == 0)
+            {
+                Serial.println("[CLIMA][UPLOAD][ERRO] Escrita TLS interrompida.");
+                client.stop();
+                return false;
+            }
+            sent += written;
+            climateYield();
+        }
+
+        int status = -1;
+        String response;
+        const bool ok = readClimateHttpsResponse(client, &status, &response);
+        client.stop();
+        delay(CLIMATE_POST_UPLOAD_SETTLE_MS);
+
+        Serial.printf("[CLIMA][UPLOAD] HTTP %d resposta=%s\n", status, response.c_str());
+        return ok;
+    }
+
+    bool postClimateReadingWithHttpClient(const ClimateRuntimeReading &reading, const String &payload)
+    {
+        (void)reading;
+
         WiFiClientSecure client;
         client.setInsecure();
 
@@ -335,20 +488,43 @@ namespace
         http.addHeader("x-device-id", DEVICE_ID);
         http.addHeader("x-namespace", MQTT_NAMESPACE);
 
-        Serial.printf("[CLIMA][UPLOAD] Enviando leitura: ldr=%d temp=%.2f umid=%.2f lamp=%s fan=%s\n",
-                      reading.ldrRaw,
-                      reading.temperatureC,
-                      reading.humidityPercent,
-                      reading.lampOn ? "ON" : "OFF",
-                      reading.fanOn ? "ON" : "OFF");
-
         const int status = http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(payload.c_str())), payload.length());
         const String response = http.getString();
         http.end();
         client.stop();
+        delay(CLIMATE_POST_UPLOAD_SETTLE_MS);
 
         Serial.printf("[CLIMA][UPLOAD] HTTP %d resposta=%s\n", status, response.substring(0, 160).c_str());
         return status >= 200 && status < 300;
+    }
+
+    bool postClimateReading(const ClimateRuntimeReading &reading)
+    {
+        if (strlen(CLIMATE_INGEST_URL) == 0)
+        {
+            Serial.println("[CLIMA][UPLOAD][WARN] CLIMATE_INGEST_URL vazio; leitura nao enviada ao Firebase.");
+            return false;
+        }
+        if (!isWiFiConnected())
+        {
+            Serial.println("[CLIMA][UPLOAD][WARN] Wi-Fi indisponivel.");
+            return false;
+        }
+
+        const String payload = buildClimatePayload(reading);
+        Serial.printf("[CLIMA][UPLOAD] Enviando leitura: ldr=%d temp=%.2f umid=%.2f lamp=%s fan=%s modo=%s\n",
+                      reading.ldrRaw,
+                      reading.temperatureC,
+                      reading.humidityPercent,
+                      reading.lampOn ? "ON" : "OFF",
+                      reading.fanOn ? "ON" : "OFF",
+                      CLIMATE_UPLOAD_USE_HTTPCLIENT ? "HTTPClient" : "TLS_RAW");
+
+        if (CLIMATE_UPLOAD_USE_HTTPCLIENT)
+        {
+            return postClimateReadingWithHttpClient(reading, payload);
+        }
+        return postClimateReadingWithRawTls(reading, payload);
     }
 
     ClimateRuntimeReading readClimateSensors(bool evaluateFan = false, bool forceFanCheck = false)

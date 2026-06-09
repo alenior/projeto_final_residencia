@@ -15,7 +15,6 @@
 #define CAMERA_GRAB_WHEN_EMPTY 0
 #endif
 #include <esp_heap_caps.h>
-#include <esp_task_wdt.h>
 
 #ifndef CAMERA_GRAB_MODE
 #define CAMERA_GRAB_MODE CAMERA_GRAB_WHEN_EMPTY
@@ -95,9 +94,12 @@ namespace
 
     void cameraYield()
     {
+        // Nao chamar esp_task_wdt_reset() diretamente aqui: no Arduino-ESP32 3.x
+        // a tarefa do sketch pode nao estar registrada no TWDT, gerando logs
+        // repetitivos "task not found" durante uploads HTTPS longos. yield()+delay(1)
+        // mantem a cooperatividade com Wi-Fi/TLS sem acionar esse erro esp-idf.
         yield();
         delay(1);
-        esp_task_wdt_reset();
     }
 
     uint8_t *allocateUploadBuffer(size_t length, const char **memoryKind)
