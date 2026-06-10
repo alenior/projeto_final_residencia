@@ -30,6 +30,12 @@
 #ifndef HDC1080_I2C_FREQUENCY_HZ
 #define HDC1080_I2C_FREQUENCY_HZ 100000UL
 #endif
+#ifndef CLIMATE_HDC1080_ENABLED
+#define CLIMATE_HDC1080_ENABLED 0
+#endif
+#ifndef CLIMATE_HDC1080_PROBE_ON_BOOT
+#define CLIMATE_HDC1080_PROBE_ON_BOOT 0
+#endif
 #ifndef CLIMATE_INTERVAL_MS
 #define CLIMATE_INTERVAL_MS 60000UL
 #endif
@@ -128,6 +134,7 @@ namespace
     unsigned long manualLightOverrideUntilMs = 0;
     bool manualOverrideActive = false;
     bool hdcOnline = false;
+    bool hdcI2cStarted = false;
 
     float ldrPercentFromRaw(int raw)
     {
@@ -157,8 +164,34 @@ namespace
         reading->fanTimeoutMs = fanTimeoutMs;
     }
 
+    bool ensureHdc1080Bus()
+    {
+#if CLIMATE_HDC1080_ENABLED
+        if (hdcI2cStarted)
+            return true;
+        Serial.printf("[CLIMA][HDC1080] Inicializando I2C sda=%d scl=%d freq=%lu addr=0x%02x\n",
+                      HDC1080_SDA_PIN,
+                      HDC1080_SCL_PIN,
+                      static_cast<unsigned long>(HDC1080_I2C_FREQUENCY_HZ),
+                      HDC1080_I2C_ADDRESS);
+        if (!Wire.begin(HDC1080_SDA_PIN, HDC1080_SCL_PIN, HDC1080_I2C_FREQUENCY_HZ))
+        {
+            Serial.println("[CLIMA][HDC1080][WARN] Wire.begin falhou; sensor marcado como indisponivel.");
+            return false;
+        }
+        Wire.setTimeOut(100);
+        hdcI2cStarted = true;
+        delay(20);
+        return true;
+#else
+        return false;
+#endif
+    }
+
     bool readHdc1080Register(uint8_t reg, uint16_t *rawValue)
     {
+        if (!ensureHdc1080Bus())
+            return false;
         Wire.beginTransmission(HDC1080_I2C_ADDRESS);
         Wire.write(reg);
         if (Wire.endTransmission() != 0)
@@ -647,12 +680,17 @@ namespace
 
 void setupClimateManager()
 {
-    Wire.begin(HDC1080_SDA_PIN, HDC1080_SCL_PIN, HDC1080_I2C_FREQUENCY_HZ);
-    Wire.setTimeOut(100);
-
     float temperatureC = NAN;
     float humidityPercent = NAN;
+#if CLIMATE_HDC1080_ENABLED && CLIMATE_HDC1080_PROBE_ON_BOOT
     hdcOnline = readHdc1080(&temperatureC, &humidityPercent);
+#elif CLIMATE_HDC1080_ENABLED
+    hdcOnline = false;
+    Serial.println("[CLIMA][HDC1080] Probe no boot desabilitado; primeira leitura sera tentada no ciclo de clima.");
+#else
+    hdcOnline = false;
+    Serial.println("[CLIMA][HDC1080][WARN] Sensor desabilitado por CLIMATE_HDC1080_ENABLED=0 para evitar PANIC no boot; LDR/atuadores permanecem ativos.");
+#endif
 
     Serial.printf("[CLIMA][CFG] ldr_gpio=%d adc=12bits threshold=%d hysteresis=%d lamp_gpio=%d fan_gpio=%d fan_threshold=%.2fC fan_check_ms=%lu fan_timeout_ms=%lu hdc1080=%s sda=%d scl=%d addr=0x%02x interval_ms=%lu\n",
                   PIN_LDR_ADC,

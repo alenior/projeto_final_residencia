@@ -3,7 +3,6 @@ import 'package:dashboard_estufa_iot/features/predators/presentation/predators_p
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
-import '../features/device_info/presentation/device_info_page.dart';
 import '../features/climate/presentation/climate_page.dart';
 import '../features/irrigation/presentation/irrigation_page.dart';
 import '../features/camera/presentation/camera_page.dart';
