@@ -303,6 +303,92 @@ exports.ingestIrrigationReading = onRequest({ invoker: 'public', timeoutSeconds:
   }
 });
 
+
+// ESP32 -> HTTPS -> Firestore predator alerts/history.
+// Grava eventos do PIR/buzzer em devices/{deviceId}/predators e alerts/events.
+exports.ingestPredatorAlert = onRequest({ invoker: 'public', timeoutSeconds: 30, memory: '256Mi' }, async (req, res) => {
+  try {
+    setCorsHeaders(res);
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+    if (req.method !== 'POST') {
+      return res.status(405).json({ ok: false, error: 'Use POST' });
+    }
+
+    if (!validateUploadToken(req)) {
+      return res.status(401).json({ ok: false, error: 'Token de upload invalido' });
+    }
+
+    const body = req.body || {};
+    const deviceId = body.deviceId || req.get('x-device-id');
+    const namespace = body.namespace || req.get('x-namespace') || DEFAULT_NAMESPACE;
+    if (!deviceId) {
+      return res.status(400).json({ ok: false, error: 'deviceId é obrigatório' });
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const reading = {
+      device_id: deviceId,
+      namespace,
+      topic: `estufa/${namespace}/${deviceId}/predadores`,
+      timestamp_device: body.timestamp || null,
+      uptime_ms: numberOrNull(body.uptime_ms),
+      motion_detected: boolOrFalse(body.motion_detected),
+      monitoring_enabled: boolOrFalse(body.monitoring_enabled),
+      buzzer_enabled: boolOrFalse(body.buzzer_enabled),
+      alarm_active: boolOrFalse(body.alarm_active),
+      alert_event: boolOrFalse(body.alert_event),
+      reason: body.reason || 'unknown',
+      pir_pin: numberOrNull(body.pir_pin),
+      buzzer_pin: numberOrNull(body.buzzer_pin),
+      buzzer_pwm_freq_hz: numberOrNull(body.buzzer_pwm_freq_hz),
+      buzzer_pwm_resolution_bits: numberOrNull(body.buzzer_pwm_resolution_bits),
+      buzzer_pwm_duty: numberOrNull(body.buzzer_pwm_duty),
+      check_interval_ms: numberOrNull(body.check_interval_ms),
+      alert_cooldown_ms: numberOrNull(body.alert_cooldown_ms),
+      buzzer_duration_ms: numberOrNull(body.buzzer_duration_ms),
+      source: 'esp32_s3_predator_monitor',
+      created_at: now,
+      updated_at: now,
+    };
+
+    const base = db.collection('devices').doc(deviceId);
+    const docRef = await base.collection('predators').add(reading);
+
+    if (reading.alert_event || reading.motion_detected) {
+      const alertPayload = {
+        kind: reading.motion_detected ? 'predator_motion_detected' : `predator_${reading.reason}`,
+        namespace,
+        motion_detected: reading.motion_detected,
+        alarm_active: reading.alarm_active,
+        reason: reading.reason,
+        pir_pin: reading.pir_pin,
+        buzzer_pin: reading.buzzer_pin,
+        message: reading.motion_detected
+          ? 'Movimento detectado pelo PIR; possível predador/invasor próximo da estufa.'
+          : `Evento do alarme de predadores registrado: ${reading.reason}.`,
+        created_at: now,
+        predator_reading_id: docRef.id,
+      };
+      await base.collection('alerts').add(alertPayload);
+      await base.collection('events').add(alertPayload);
+    }
+
+    logger.info('Evento de predadores gravado', {
+      deviceId,
+      readingId: docRef.id,
+      motionDetected: reading.motion_detected,
+      alarmActive: reading.alarm_active,
+      reason: reading.reason,
+    });
+    return res.status(200).json({ ok: true, readingId: docRef.id });
+  } catch (err) {
+    logger.error('ingestPredatorAlert error', err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ESP32 -> HTTPS -> Firebase Storage + Firestore metadata.
 // Aceita JSON base64 ou corpo binario image/jpeg. No modo binario, envie headers x-device-id, x-namespace, x-filename, x-reason e x-captured-at.
 exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, memory: '512Mi' }, async (req, res) => {
@@ -478,6 +564,18 @@ exports.dispatchCommandToMqtt = onDocumentCreated('devices/{deviceId}/commands/{
     'solo_seco_raw',
     'soil_wet_raw',
     'solo_umido_raw',
+    'monitoring_enabled',
+    'monitoramento_habilitado',
+    'buzzer_enabled',
+    'buzzer_habilitado',
+    'predator_check_interval_ms',
+    'intervalo_verificacao_predadores_ms',
+    'predator_alert_cooldown_ms',
+    'cooldown_alerta_predadores_ms',
+    'buzzer_duration_ms',
+    'duracao_buzzer_ms',
+    'buzzer_pwm_duty',
+    'duty_buzzer',
   ]);
 
   if (!payload.comando) {

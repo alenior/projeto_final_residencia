@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'repositories/camera_repository.dart';
 import 'repositories/climate_repository.dart';
 import 'repositories/irrigation_repository.dart';
+import 'repositories/predator_repository.dart';
 import 'repositories/command_repository.dart';
 
 /// Dispositivo selecionado no dashboard.
@@ -59,6 +60,15 @@ final climateRepositoryProvider = Provider<ClimateRepository>((ref) {
 /// periodicidade/limiar e comando manual da bomba.
 final irrigationRepositoryProvider = Provider<IrrigationRepository>((ref) {
   return IrrigationRepository(
+    firestore: ref.watch(firebaseFirestoreProvider),
+    commandRepository: ref.watch(commandRepositoryProvider),
+  );
+});
+
+/// Repositório do módulo Predadores: histórico do PIR/buzzer, configuração de
+/// monitoramento e comandos de silenciar/testar alarme.
+final predatorRepositoryProvider = Provider<PredatorRepository>((ref) {
+  return PredatorRepository(
     firestore: ref.watch(firebaseFirestoreProvider),
     commandRepository: ref.watch(commandRepositoryProvider),
   );

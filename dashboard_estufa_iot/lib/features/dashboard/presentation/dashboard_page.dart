@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import 'widgets/module_card.dart';
 
 class DashboardPage extends StatelessWidget {
@@ -9,7 +10,6 @@ class DashboardPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.brown.shade100,
-
       appBar: AppBar(
         backgroundColor: Colors.lightGreenAccent,
         foregroundColor: Colors.black,
@@ -22,7 +22,6 @@ class DashboardPage extends StatelessWidget {
           ),
         ],
       ),
-
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
@@ -33,7 +32,6 @@ class DashboardPage extends StatelessWidget {
             color: Colors.orange,
             onTap: () => context.push('/climate'),
           ),
-
           ModuleCard(
             title: 'Rega',
             subtitle: 'Umidade do solo e irrigação manual',
@@ -41,7 +39,13 @@ class DashboardPage extends StatelessWidget {
             color: Colors.lightBlue.shade200,
             onTap: () => context.push('/irrigation'),
           ),
-
+          ModuleCard(
+            title: 'Predadores',
+            subtitle: 'PIR HC-SR501, buzzer e histórico de alertas',
+            icon: Icons.pest_control,
+            color: Colors.deepOrange.shade200,
+            onTap: () => context.push('/predators'),
+          ),
           ModuleCard(
             title: 'Câmera',
             subtitle: 'Histórico no Storage e captura sob demanda',

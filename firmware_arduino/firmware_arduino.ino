@@ -10,6 +10,7 @@
 #include "config.h"
 #include "irrigation_manager.h"
 #include "mqtt_manager.h"
+#include "predator_manager.h"
 #include "time_manager.h"
 #include "wifi_manager.h"
 
@@ -138,7 +139,7 @@ String buildTelemetryJson()
     doc["free_heap"] = ESP.getFreeHeap();
     doc["psram_free"] = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     doc["wifi_ip"] = localIpString();
-    doc["movimento"] = readMotion();
+    appendPredatorTelemetry(doc);
     appendIrrigationTelemetry(doc);
     appendClimateTelemetry(doc);
 
@@ -159,6 +160,10 @@ void handleCommand(JsonObject command)
         return;
     }
     if (handleIrrigationCommand(command))
+    {
+        return;
+    }
+    if (handlePredatorCommand(command))
     {
         return;
     }
@@ -199,8 +204,8 @@ void setup()
     flushBootLog();
     printCameraUploadDiagnostic();
     flushBootLog();
-    Serial.printf("GPIOs -> bomba:%d lampada_led:%d pir:%d solo:%d ldr:%d ventoinha:%d botao_camera:%d\n",
-                  PIN_RELE_BOMBA, PIN_RELE_LAMPADA, PIN_PIR, PIN_SOLO_ADC, PIN_LDR_ADC, PIN_VENTOINHA, PIN_BOTAO_CAMERA);
+    Serial.printf("GPIOs -> bomba:%d lampada_led:%d pir:%d buzzer:%d solo:%d ldr:%d ventoinha:%d botao_camera:%d\n",
+                  PIN_RELE_BOMBA, PIN_RELE_LAMPADA, PIN_PIR, PIN_BUZZER, PIN_SOLO_ADC, PIN_LDR_ADC, PIN_VENTOINHA, PIN_BOTAO_CAMERA);
     Serial.printf("Heap=%lu PSRAM livre=%lu\n",
                   static_cast<unsigned long>(ESP.getFreeHeap()),
                   static_cast<unsigned long>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
@@ -220,6 +225,9 @@ void setup()
     Serial.println("[BOOT] Inicializando clima...");
     flushBootLog();
     setupClimateManager();
+    Serial.println("[BOOT] Inicializando predadores...");
+    flushBootLog();
+    setupPredatorManager();
     Serial.println("[BOOT] Inicializando rega...");
     flushBootLog();
     setupIrrigationManager();
@@ -240,6 +248,7 @@ void loop()
     handleLocalCaptureButton();
     processClimateAutomation();
     processIrrigationAutomation();
+    processPredatorMonitoring();
 
     if (millis() - lastMqttDebugMs >= 30000UL)
     {
