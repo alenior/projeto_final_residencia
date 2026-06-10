@@ -14,6 +14,7 @@
 #endif
 
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <cstring>
 
 namespace
@@ -170,7 +171,22 @@ bool publishStatus(bool online)
 #if ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
-    String payload = String("{\"online\":") + (online ? "true" : "false") + ",\"ip\":\"" + localIpString() + "\"}";
+
+    JsonDocument doc;
+    doc["online"] = online;
+    doc["device_id"] = DEVICE_ID;
+    doc["namespace"] = MQTT_NAMESPACE;
+    doc["firmware"] = "arduino";
+    doc["ip"] = localIpString();
+    doc["mac"] = WiFi.macAddress();
+    doc["ssid"] = WiFi.SSID();
+    doc["rssi"] = WiFi.RSSI();
+    doc["uptime_ms"] = millis();
+    doc["free_heap"] = ESP.getFreeHeap();
+    doc["psram_free"] = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+
+    String payload;
+    serializeJson(doc, payload);
     return mqttClientRef().publish(topicStatus().c_str(), payload.c_str(), true);
 #else
     (void)online;

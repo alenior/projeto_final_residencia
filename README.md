@@ -86,6 +86,7 @@ Arquivos principais:
 - `firmware_arduino/camera_manager.h` + `firmware_arduino/camera_runtime.cpp` — OV5640, agenda e upload para Firebase.
 - `firmware_arduino/climate_manager.*` — LDR em GPIO1, HDC1080 no I2C0 (SDA 14/SCL 21), automação da lâmpada LED em GPIO48 e ventoinha em GPIO44 e envio de histórico para Firestore.
 - `firmware_arduino/irrigation_manager.*` — sensor de umidade do solo em GPIO41, bomba em GPIO47, leitura inicial a cada 15 s, automação por limiar de umidade e timeout de segurança de 15 s.
+- `firmware_arduino/predator_manager.*` — PIR HC-SR501 em GPIO42, buzzer PWM em GPIO3 a 5 kHz/10 bits, alerta local e histórico em Firestore.
 - `firmware_arduino/actuators.*` — bomba, lâmpada LED, leituras básicas e compatibilidade com atuadores opcionais.
 
 Consulte `firmware_arduino/README.md` antes do upload pela Arduino IDE. Se a compilação indicar `PubSubClient.h: No such file or directory`, instale `PubSubClient` pelo Library Manager e defina `MQTT_USE_PUBSUBCLIENT 1` no `config.h`; sem ela o firmware compila em modo degradado, mas não recebe comandos MQTT do Flutter.
@@ -140,9 +141,11 @@ Para gerar `firebase_options.dart`, entre em `dashboard_estufa_iot/` e execute `
 
 ### Visualização de imagens no Flutter
 
-### Módulos Clima e Rega no Flutter
+### Módulos Clima, Rega e Predadores no Flutter
 
-O módulo Clima lê `devices/{deviceId}/climate` para exibir histórico de temperatura, umidade, luminosidade, lâmpada LED e ventoinha. O módulo Rega lê `devices/{deviceId}/irrigation` para exibir as últimas leituras do solo e eventos da bomba. Os botões manuais gravam comandos `iluminar`, `ventilar` e `irrigar` em `devices/{deviceId}/commands`, enquanto as configurações da ventoinha/lâmpada gravam `configurar_clima` e a configuração da rega grava `configurar_rega`; a Function `dispatchCommandToMqtt` publica tudo no MQTT para o ESP32-S3. O firmware liga a lâmpada automaticamente quando o limiar de LDR é atingido (`LDR_DARK_THRESHOLD_RAW`, agora mais sensível por padrão em 1800 raw), permite ajustar limiar/histerese pelo Flutter, aciona a ventoinha quando a temperatura supera o limiar configurado e registra os eventos via `ingestClimateReading`. Na Rega, o ESP32 aciona a bomba quando a umidade do solo fica abaixo de `SOIL_MIN_MOISTURE_PERCENT`, sempre com timeout `IRRIGATION_PUMP_TIMEOUT_MS`, e grava o histórico via `ingestIrrigationReading`.
+O módulo Clima lê `devices/{deviceId}/climate` para exibir histórico de temperatura, umidade, luminosidade, lâmpada LED e ventoinha. O módulo Rega lê `devices/{deviceId}/irrigation` para exibir as últimas leituras do solo e eventos da bomba. O módulo Predadores lê `devices/{deviceId}/predators` para exibir histórico de presença, alarme e buzzer. Os botões manuais gravam comandos `iluminar`, `ventilar` e `irrigar` em `devices/{deviceId}/commands`, enquanto as configurações da ventoinha/lâmpada gravam `configurar_clima` e a configuração da rega grava `configurar_rega`; a Function `dispatchCommandToMqtt` publica tudo no MQTT para o ESP32-S3. O firmware liga a lâmpada automaticamente quando o limiar de LDR é atingido (`LDR_DARK_THRESHOLD_RAW`, agora mais sensível por padrão em 1800 raw), permite ajustar limiar/histerese pelo Flutter, aciona a ventoinha quando a temperatura supera o limiar configurado e registra os eventos via `ingestClimateReading`. Na Rega, o ESP32 aciona a bomba quando a umidade do solo fica abaixo de `SOIL_MIN_MOISTURE_PERCENT`, sempre com timeout `IRRIGATION_PUMP_TIMEOUT_MS`, e grava o histórico via `ingestIrrigationReading`. Em Predadores, o PIR dispara alerta informativo com buzzer PWM e grava registros via `ingestPredatorAlert`; o Flutter envia `configurar_predadores`, `silenciar_predadores` e `testar_buzzer`.
+
+A AppBar do dashboard consome `devices/{deviceId}/status/current` para mostrar um indicador Online/Offline e abrir a tela `/device`, onde são exibidos ID, namespace, firmware, MAC, IP, SSID, RSSI, uptime, heap e PSRAM livres. O firmware Arduino publica essas informações no tópico MQTT `estufa/{namespace}/{deviceId}/status`; mantenha o bridge/Function `ingestMqttEvent` recebendo eventos `kind=status` para espelhar esse payload no Firestore.
 
 ### Visualização de imagens no Flutter
 

@@ -8,6 +8,7 @@ import 'repositories/climate_repository.dart';
 import 'repositories/irrigation_repository.dart';
 import 'repositories/predator_repository.dart';
 import 'repositories/command_repository.dart';
+import 'repositories/device_repository.dart';
 
 /// Dispositivo selecionado no dashboard.
 ///
@@ -72,4 +73,9 @@ final predatorRepositoryProvider = Provider<PredatorRepository>((ref) {
     firestore: ref.watch(firebaseFirestoreProvider),
     commandRepository: ref.watch(commandRepositoryProvider),
   );
+});
+
+/// Repositório de status atual do dispositivo: consome `devices/{deviceId}/status/current`.
+final deviceRepositoryProvider = Provider<DeviceRepository>((ref) {
+  return DeviceRepository(firestore: ref.watch(firebaseFirestoreProvider));
 });

@@ -15,11 +15,17 @@ class DeviceStatus {
   final DateTime? deviceTimestamp;
   final String? mac;
   final String? uid;
+  final String? ip;
+  final String? ssid;
+  final int? rssi;
+  final int? uptimeMs;
+  final String? firmware;
   final String? platform;
   final String? pythonVersion;
   final int? frequencyHz;
   final int? memFree;
   final int? memAlloc;
+  final int? psramFree;
   final int? resetCause;
   final int? wakeReason;
   final Map<String, dynamic> raw;
@@ -34,11 +40,17 @@ class DeviceStatus {
     this.deviceTimestamp,
     this.mac,
     this.uid,
+    this.ip,
+    this.ssid,
+    this.rssi,
+    this.uptimeMs,
+    this.firmware,
     this.platform,
     this.pythonVersion,
     this.frequencyHz,
     this.memFree,
     this.memAlloc,
+    this.psramFree,
     this.resetCause,
     this.wakeReason,
   });
@@ -76,11 +88,30 @@ class DeviceStatus {
       deviceTimestamp: _asDateTime(data['timestamp']),
       mac: _firstString([data['mac'], device['mac'], boot['mac']]),
       uid: _firstString([data['uid'], device['uid'], boot['uid_hex']]),
+      ip: _firstString([
+        data['ip'],
+        data['wifi_ip'],
+        device['ip'],
+        device['wifi_ip'],
+      ]),
+      ssid: _firstString([data['ssid'], device['ssid']]),
+      rssi: _firstInt([data['rssi'], data['wifi_rssi'], device['rssi']]),
+      uptimeMs: _firstInt([data['uptime_ms'], device['uptime_ms']]),
+      firmware: _firstString([data['firmware'], device['firmware']]),
       platform: _firstString([data['platform'], boot['platform']]),
       pythonVersion: _firstString([data['python'], boot['python']]),
       frequencyHz: _firstInt([data['freq_hz'], boot['freq_hz']]),
-      memFree: _firstInt([data['mem_free'], boot['mem_free']]),
+      memFree: _firstInt([
+        data['mem_free'],
+        data['free_heap'],
+        boot['mem_free'],
+      ]),
       memAlloc: _firstInt([data['mem_alloc'], boot['mem_alloc']]),
+      psramFree: _firstInt([
+        data['psram_free'],
+        data['free_psram'],
+        device['psram_free'],
+      ]),
       resetCause: _firstInt([data['reset_cause'], boot['reset_cause']]),
       wakeReason: _firstInt([data['wake_reason'], boot['wake_reason']]),
       raw: Map<String, dynamic>.from(data),
@@ -100,6 +131,8 @@ class DeviceStatus {
     return currentAge > const Duration(minutes: 2);
   }
 
+  bool get effectiveOnline => online && !isStale;
+
   Map<String, dynamic> toMap() => {
     'device_id': deviceId,
     'namespace': namespace,
@@ -109,11 +142,17 @@ class DeviceStatus {
     'timestamp': deviceTimestamp,
     'mac': mac,
     'uid': uid,
+    'ip': ip,
+    'ssid': ssid,
+    'rssi': rssi,
+    'uptime_ms': uptimeMs,
+    'firmware': firmware,
     'platform': platform,
     'python': pythonVersion,
     'freq_hz': frequencyHz,
     'mem_free': memFree,
     'mem_alloc': memAlloc,
+    'psram_free': psramFree,
     'reset_cause': resetCause,
     'wake_reason': wakeReason,
   };

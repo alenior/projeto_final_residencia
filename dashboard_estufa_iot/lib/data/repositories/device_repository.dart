@@ -1,19 +1,21 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../core/constants/firestore_paths.dart';
+
+import '../../core/models/device_status.dart';
 
 class DeviceRepository {
-  final FirebaseFirestore _db;
-  DeviceRepository(this._db);
+  final FirebaseFirestore _firestore;
 
-  Stream<DocumentSnapshot<Map<String, dynamic>>> watchStatus(String deviceId) {
-    return _db.doc(FirestorePaths.statusDoc(deviceId)).snapshots();
-  }
+  DeviceRepository({FirebaseFirestore? firestore})
+    : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> watchTelemetry(String deviceId) {
-    return _db
-        .collection(FirestorePaths.telemetryCol(deviceId))
-        .orderBy('received_at', descending: true)
-        .limit(50)
-        .snapshots();
+  Stream<DeviceStatus> watchCurrentStatus(String deviceId) {
+    return _firestore
+        .doc('devices/$deviceId/status/current')
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.exists
+              ? DeviceStatus.fromFirestore(snapshot)
+              : DeviceStatus.empty(deviceId),
+        );
   }
 }

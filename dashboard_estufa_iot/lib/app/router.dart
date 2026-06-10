@@ -1,3 +1,4 @@
+import 'package:dashboard_estufa_iot/features/device/presentation/device_page.dart';
 import 'package:dashboard_estufa_iot/features/predators/presentation/predators_page.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,7 +13,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     routes: [
       GoRoute(path: '/', builder: (_, _) => const DashboardPage()),
-      GoRoute(path: '/device', builder: (_, _) => const DeviceInfoPage()),
+      GoRoute(path: '/device', builder: (_, _) => const DevicePage()),
       GoRoute(path: '/climate', builder: (_, _) => const ClimatePage()),
       GoRoute(path: '/irrigation', builder: (_, _) => const IrrigationPage()),
       GoRoute(path: '/predators', builder: (_, _) => const PredatorsPage()),

@@ -23,6 +23,9 @@ extern void printCameraUploadDiagnostic();
 #ifndef CAMERA_BUTTON_ENABLED
 #define CAMERA_BUTTON_ENABLED true
 #endif
+#ifndef DEVICE_STATUS_INTERVAL_MS
+#define DEVICE_STATUS_INTERVAL_MS 30000UL
+#endif
 #ifndef CAMERA_BUTTON_ACTIVE_LOW
 #define CAMERA_BUTTON_ACTIVE_LOW true
 #endif
@@ -35,6 +38,7 @@ extern void printCameraUploadDiagnostic();
 
 unsigned long lastTelemetryMs = 0;
 unsigned long lastMqttDebugMs = 0;
+unsigned long lastStatusMs = 0;
 unsigned long lastCameraButtonChangeMs = 0;
 unsigned long lastCameraButtonCaptureMs = 0;
 bool lastCameraButtonReading = !CAMERA_BUTTON_ACTIVE_LOW;
@@ -249,6 +253,12 @@ void loop()
     processClimateAutomation();
     processIrrigationAutomation();
     processPredatorMonitoring();
+
+    if (millis() - lastStatusMs >= DEVICE_STATUS_INTERVAL_MS)
+    {
+        lastStatusMs = millis();
+        publishStatus(true);
+    }
 
     if (millis() - lastMqttDebugMs >= 30000UL)
     {
