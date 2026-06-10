@@ -219,6 +219,90 @@ exports.ingestClimateReading = onRequest({ invoker: 'public', timeoutSeconds: 30
   }
 });
 
+
+// ESP32 -> HTTPS -> Firestore irrigation history.
+// Grava leituras do sensor de solo e eventos da bomba em devices/{deviceId}/irrigation.
+exports.ingestIrrigationReading = onRequest({ invoker: 'public', timeoutSeconds: 30, memory: '256Mi' }, async (req, res) => {
+  try {
+    setCorsHeaders(res);
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+    if (req.method !== 'POST') {
+      return res.status(405).json({ ok: false, error: 'Use POST' });
+    }
+
+    if (!validateUploadToken(req)) {
+      return res.status(401).json({ ok: false, error: 'Token de upload invalido' });
+    }
+
+    const body = req.body || {};
+    const deviceId = body.deviceId || req.get('x-device-id');
+    const namespace = body.namespace || req.get('x-namespace') || DEFAULT_NAMESPACE;
+    if (!deviceId) {
+      return res.status(400).json({ ok: false, error: 'deviceId é obrigatório' });
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const reading = {
+      device_id: deviceId,
+      namespace,
+      topic: `estufa/${namespace}/${deviceId}/rega`,
+      timestamp_device: body.timestamp || null,
+      uptime_ms: numberOrNull(body.uptime_ms),
+      soil_raw: numberOrNull(body.soil_raw),
+      soil_moisture_percent: numberOrNull(body.soil_moisture_percent),
+      low_soil_moisture: boolOrFalse(body.low_soil_moisture),
+      soil_min_moisture_percent: numberOrNull(body.soil_min_moisture_percent),
+      soil_dry_raw: numberOrNull(body.soil_dry_raw),
+      soil_wet_raw: numberOrNull(body.soil_wet_raw),
+      read_interval_ms: numberOrNull(body.read_interval_ms),
+      pump_on: boolOrFalse(body.pump_on),
+      pump_reason: body.pump_reason || 'unknown',
+      pump_event: boolOrFalse(body.pump_event),
+      auto_pump_triggered: boolOrFalse(body.auto_pump_triggered),
+      pump_timeout_ms: numberOrNull(body.pump_timeout_ms),
+      source: 'esp32_s3_irrigation',
+      created_at: now,
+      updated_at: now,
+    };
+
+    const base = db.collection('devices').doc(deviceId);
+    const docRef = await base.collection('irrigation').add(reading);
+
+    if (reading.pump_event || reading.auto_pump_triggered) {
+      await base.collection('events').add({
+        kind: reading.auto_pump_triggered ? 'pump_on_dry_soil' : `pump_${reading.pump_reason}`,
+        namespace,
+        soil_raw: reading.soil_raw,
+        soil_moisture_percent: reading.soil_moisture_percent,
+        soil_min_moisture_percent: reading.soil_min_moisture_percent,
+        pump_on: reading.pump_on,
+        pump_reason: reading.pump_reason,
+        pump_timeout_ms: reading.pump_timeout_ms,
+        message: reading.auto_pump_triggered
+          ? 'Umidade do solo abaixo do limite; bomba acionada automaticamente.'
+          : `Evento da bomba registrado: ${reading.pump_reason}.`,
+        created_at: now,
+        irrigation_reading_id: docRef.id,
+      });
+    }
+
+    logger.info('Leitura de rega gravada', {
+      deviceId,
+      readingId: docRef.id,
+      soilRaw: reading.soil_raw,
+      soilMoisture: reading.soil_moisture_percent,
+      pumpOn: reading.pump_on,
+      pumpReason: reading.pump_reason,
+    });
+    return res.status(200).json({ ok: true, readingId: docRef.id });
+  } catch (err) {
+    logger.error('ingestIrrigationReading error', err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ESP32 -> HTTPS -> Firebase Storage + Firestore metadata.
 // Aceita JSON base64 ou corpo binario image/jpeg. No modo binario, envie headers x-device-id, x-namespace, x-filename, x-reason e x-captured-at.
 exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, memory: '512Mi' }, async (req, res) => {
@@ -384,6 +468,16 @@ exports.dispatchCommandToMqtt = onDocumentCreated('devices/{deviceId}/commands/{
     'intervalo_verificacao_ms',
     'fan_timeout_ms',
     'timeout_ventoinha_ms',
+    'soil_min_moisture_percent',
+    'umidade_minima_solo_percent',
+    'soil_read_interval_ms',
+    'intervalo_leitura_solo_ms',
+    'pump_timeout_ms',
+    'timeout_bomba_ms',
+    'soil_dry_raw',
+    'solo_seco_raw',
+    'soil_wet_raw',
+    'solo_umido_raw',
   ]);
 
   if (!payload.comando) {

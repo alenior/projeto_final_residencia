@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import 'repositories/camera_repository.dart';
 import 'repositories/climate_repository.dart';
+import 'repositories/irrigation_repository.dart';
 import 'repositories/command_repository.dart';
 
 /// Dispositivo selecionado no dashboard.
@@ -49,6 +50,15 @@ final cameraRepositoryProvider = Provider<CameraRepository>((ref) {
 /// manual da iluminação.
 final climateRepositoryProvider = Provider<ClimateRepository>((ref) {
   return ClimateRepository(
+    firestore: ref.watch(firebaseFirestoreProvider),
+    commandRepository: ref.watch(commandRepositoryProvider),
+  );
+});
+
+/// Repositório do módulo Rega: histórico do sensor de solo, configuração de
+/// periodicidade/limiar e comando manual da bomba.
+final irrigationRepositoryProvider = Provider<IrrigationRepository>((ref) {
+  return IrrigationRepository(
     firestore: ref.watch(firebaseFirestoreProvider),
     commandRepository: ref.watch(commandRepositoryProvider),
   );

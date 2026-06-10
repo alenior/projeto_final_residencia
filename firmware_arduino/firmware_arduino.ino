@@ -8,6 +8,7 @@
 #include "camera_manager.h"
 #include "climate_manager.h"
 #include "config.h"
+#include "irrigation_manager.h"
 #include "mqtt_manager.h"
 #include "time_manager.h"
 #include "wifi_manager.h"
@@ -138,7 +139,7 @@ String buildTelemetryJson()
     doc["psram_free"] = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
     doc["wifi_ip"] = localIpString();
     doc["movimento"] = readMotion();
-    doc["solo_raw"] = readSoilRaw();
+    appendIrrigationTelemetry(doc);
     appendClimateTelemetry(doc);
 
     String output;
@@ -157,12 +158,12 @@ void handleCommand(JsonObject command)
     {
         return;
     }
-
-    if (strcmp(action, "irrigar") == 0)
+    if (handleIrrigationCommand(command))
     {
-        setPump(status);
+        return;
     }
-    else if (strcmp(action, "ventilar") == 0)
+
+    if (strcmp(action, "ventilar") == 0)
     {
         setFan(status);
     }
@@ -219,6 +220,9 @@ void setup()
     Serial.println("[BOOT] Inicializando clima...");
     flushBootLog();
     setupClimateManager();
+    Serial.println("[BOOT] Inicializando rega...");
+    flushBootLog();
+    setupIrrigationManager();
     Serial.println("[BOOT] Inicializando camera...");
     flushBootLog();
     setupCameraManager();
@@ -235,6 +239,7 @@ void loop()
     mqttLoop();
     handleLocalCaptureButton();
     processClimateAutomation();
+    processIrrigationAutomation();
 
     if (millis() - lastMqttDebugMs >= 30000UL)
     {

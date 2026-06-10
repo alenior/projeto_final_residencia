@@ -31,6 +31,11 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      match /irrigation/{readingId} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
+
       match /{subCollection=**}/{docId} {
         allow read: if request.auth != null;
         allow write: if false;
@@ -58,4 +63,4 @@ service firebase.storage {
 }
 ```
 
-> Observação: gravações de backend (Cloud Functions com Admin SDK) ignoram rules de cliente. O upload da câmera deve ocorrer pela Function `uploadCameraImage`, não diretamente pelo app ou pelo cliente anônimo. As leituras do módulo clima devem ser gravadas pela Function `ingestClimateReading`.
+> Observação: gravações de backend (Cloud Functions com Admin SDK) ignoram rules de cliente. O upload da câmera deve ocorrer pela Function `uploadCameraImage`, não diretamente pelo app ou pelo cliente anônimo. As leituras do módulo clima devem ser gravadas pela Function `ingestClimateReading`, e as leituras/eventos do módulo Rega pela Function `ingestIrrigationReading`.
