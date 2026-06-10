@@ -15,6 +15,7 @@ class ClimateReading {
   final bool lowLight;
   final bool autoLightTriggered;
   final int? lightThresholdRaw;
+  final int? lightHysteresisRaw;
   final bool lampOn;
   final String lampReason;
   final bool manualOverrideActive;
@@ -50,6 +51,7 @@ class ClimateReading {
     this.ldrRaw,
     this.ldrPercent,
     this.lightThresholdRaw,
+    this.lightHysteresisRaw,
     this.fanTempThresholdC,
     this.fanCheckIntervalMs,
     this.fanTimeoutMs,
@@ -84,6 +86,7 @@ class ClimateReading {
       lowLight: _asBool(data['low_light']),
       autoLightTriggered: _asBool(data['auto_light_triggered']),
       lightThresholdRaw: _asInt(data['light_threshold_raw']),
+      lightHysteresisRaw: _asInt(data['light_hysteresis_raw']),
       lampOn: _asBool(data['lamp_on']),
       lampReason: _asString(data['lamp_reason'], fallback: 'unknown'),
       manualOverrideActive: _asBool(data['manual_override_active']),
@@ -107,6 +110,12 @@ class ClimateReading {
         ? '--'
         : '${ldrPercent!.toStringAsFixed(1)}%';
     return '$raw ADC ($percent)';
+  }
+
+  String get formattedLightConfig {
+    final threshold = lightThresholdRaw?.toString() ?? '--';
+    final hysteresis = lightHysteresisRaw?.toString() ?? '--';
+    return 'liga em <= $threshold ADC; apaga em >= +$hysteresis';
   }
 
   String get formattedTemperature =>

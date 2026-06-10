@@ -47,8 +47,8 @@ No ESP32, ajuste a cópia local de `secrets.py.example`:
 
 ```python
 CAMERA_DRIVER_MODULE = "camera"
-CAMERA_FRAME_SIZE = "SVGA"
-CAMERA_JPEG_QUALITY = 12
+CAMERA_FRAME_SIZE = "XGA"
+CAMERA_JPEG_QUALITY = 8
 CAMERA_LOCAL_DIR = "/imagens"
 CAMERA_UPLOAD_URL = "https://us-central1-SEU_PROJETO.cloudfunctions.net/uploadCameraImage"
 CAMERA_UPLOAD_TOKEN = "MESMO_TOKEN_CONFIGURADO_EM_functions/.env"
@@ -85,7 +85,7 @@ Se o monitor serial mostrar `esp_camera_init` bem-sucedido, mas a captura falhar
 
 1. Pinout real da placa/câmera: D0-D7, XCLK, PCLK, VSYNC, HREF, SIOD/SDA e SIOC/SCL devem corresponder exatamente ao módulo usado.
 2. Alimentação: a OV5640 deve ter 3V3 estável, GND comum e fios curtos; instabilidade pode permitir `esp_camera_init`, mas impedir frame válido.
-3. PSRAM habilitada na Arduino IDE e frame size inicial moderado (`FRAMESIZE_QVGA` ou `FRAMESIZE_VGA`).
+3. PSRAM habilitada na Arduino IDE. Para qualidade, teste `FRAMESIZE_XGA`/`CAMERA_JPEG_QUALITY 8`; para diagnóstico de estabilidade, reduza temporariamente para `FRAMESIZE_QVGA` ou `FRAMESIZE_VGA`.
 4. Frequência XCLK: se persistir, teste `CAMERA_XCLK_FREQ_HZ 10000000` em `firmware_arduino/config.h`.
 5. Modo de captura: use `#define CAMERA_GRAB_MODE CAMERA_GRAB_WHEN_EMPTY`; se ainda falhar, teste também `#define CAMERA_USE_PSRAM_FRAMEBUFFER false` com `FRAMESIZE_QVGA`.
 6. Cabo/conector flat e orientação do módulo, especialmente em placas ESP32-S3 com câmera separada.
@@ -120,6 +120,9 @@ O problema do firmware estará resolvido quando:
 3. `captura_de_imagem.capturar_e_salvar(...)` salvar um arquivo `.jpg` localmente.
 4. Com `CAMERA_UPLOAD_URL` e `CAMERA_UPLOAD_TOKEN` corretos, a imagem aparecer no Firebase Storage em `devices/<deviceId>/images/` e no app Flutter na tela da câmera.
 
+## Qualidade de imagem
+
+No `esp32-camera`, `jpeg_quality` usa escala inversa: valores menores geram menos compressão e melhor qualidade, mas imagens maiores. O padrão Arduino do projeto agora usa `CAMERA_FRAME_SIZE FRAMESIZE_XGA`, `CAMERA_JPEG_QUALITY 8` e `CAMERA_FB_COUNT 2` quando há PSRAM. Se o upload voltar a reiniciar, reduza para `FRAMESIZE_SVGA` ou `CAMERA_JPEG_QUALITY 10-12`. O runtime também aplica ajustes leves no sensor (`contraste`, lente/gamma, AWB e AEC2) para melhorar nitidez/exposição sem exigir pós-processamento no Flutter.
 
 ## Upload HTTPS em chunks
 

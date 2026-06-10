@@ -56,6 +56,30 @@ class ClimateRepository {
     );
   }
 
+  Future<void> configureLightSensitivity(
+    String deviceId, {
+    required int thresholdRaw,
+    required int hysteresisRaw,
+  }) async {
+    final safeThreshold = thresholdRaw.clamp(0, 4095);
+    final safeHysteresis = hysteresisRaw.clamp(10, 1500);
+    await _commandRepository.sendCommand(
+      deviceId,
+      CommandRequest(
+        comando: 'configurar_clima',
+        status: true,
+        origem: 'flutter_climate_card',
+        extraPayload: {
+          'reason': 'config_light_flutter',
+          'light_threshold_raw': safeThreshold,
+          'limite_luz_raw': safeThreshold,
+          'light_hysteresis_raw': safeHysteresis,
+          'histerese_luz_raw': safeHysteresis,
+        },
+      ),
+    );
+  }
+
   Future<void> configureFanAutomation(
     String deviceId, {
     required double temperatureThresholdC,

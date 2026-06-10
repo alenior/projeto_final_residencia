@@ -15,14 +15,19 @@ class ClimatePage extends ConsumerStatefulWidget {
 class _ClimatePageState extends ConsumerState<ClimatePage> {
   final _fanThresholdController = TextEditingController(text: '35');
   final _fanIntervalController = TextEditingController(text: '5');
+  final _lightThresholdController = TextEditingController(text: '1800');
+  final _lightHysteresisController = TextEditingController(text: '350');
   bool _sendingLightCommand = false;
   bool _sendingFanCommand = false;
   bool _savingFanConfig = false;
+  bool _savingLightConfig = false;
 
   @override
   void dispose() {
     _fanThresholdController.dispose();
     _fanIntervalController.dispose();
+    _lightThresholdController.dispose();
+    _lightHysteresisController.dispose();
     super.dispose();
   }
 
@@ -121,6 +126,50 @@ class _ClimatePageState extends ConsumerState<ClimatePage> {
     }
   }
 
+  Future<void> _saveLightConfig(String deviceId) async {
+    final threshold = int.tryParse(_lightThresholdController.text);
+    final hysteresis = int.tryParse(_lightHysteresisController.text);
+    if (threshold == null ||
+        threshold < 0 ||
+        threshold > 4095 ||
+        hysteresis == null ||
+        hysteresis < 10 ||
+        hysteresis > 1500) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Informe limiar entre 0 e 4095 ADC e histerese entre 10 e 1500.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _savingLightConfig = true);
+    try {
+      await ref
+          .read(climateRepositoryProvider)
+          .configureLightSensitivity(
+            deviceId,
+            thresholdRaw: threshold,
+            hysteresisRaw: hysteresis,
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sensibilidade da iluminação enviada ao ESP32.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao configurar iluminação: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingLightConfig = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final deviceId = ref.watch(selectedDeviceIdProvider);
@@ -152,10 +201,14 @@ class _ClimatePageState extends ConsumerState<ClimatePage> {
                   sendingLight: _sendingLightCommand,
                   sendingFan: _sendingFanCommand,
                   savingFanConfig: _savingFanConfig,
+                  savingLightConfig: _savingLightConfig,
                   fanThresholdController: _fanThresholdController,
                   fanIntervalController: _fanIntervalController,
+                  lightThresholdController: _lightThresholdController,
+                  lightHysteresisController: _lightHysteresisController,
                   onTurnLightOn: () => _setLighting(deviceId, true),
                   onTurnLightOff: () => _setLighting(deviceId, false),
+                  onSaveLightConfig: () => _saveLightConfig(deviceId),
                   onTurnFanOn: () => _setFan(deviceId, true),
                   onTurnFanOff: () => _setFan(deviceId, false),
                   onSaveFanConfig: () => _saveFanConfig(deviceId),
@@ -201,10 +254,14 @@ class _ClimateSummaryCard extends StatelessWidget {
   final bool sendingLight;
   final bool sendingFan;
   final bool savingFanConfig;
+  final bool savingLightConfig;
   final TextEditingController fanThresholdController;
   final TextEditingController fanIntervalController;
+  final TextEditingController lightThresholdController;
+  final TextEditingController lightHysteresisController;
   final VoidCallback onTurnLightOn;
   final VoidCallback onTurnLightOff;
+  final VoidCallback onSaveLightConfig;
   final VoidCallback onTurnFanOn;
   final VoidCallback onTurnFanOff;
   final VoidCallback onSaveFanConfig;
@@ -214,10 +271,14 @@ class _ClimateSummaryCard extends StatelessWidget {
     required this.sendingLight,
     required this.sendingFan,
     required this.savingFanConfig,
+    required this.savingLightConfig,
     required this.fanThresholdController,
     required this.fanIntervalController,
+    required this.lightThresholdController,
+    required this.lightHysteresisController,
     required this.onTurnLightOn,
     required this.onTurnLightOff,
+    required this.onSaveLightConfig,
     required this.onTurnFanOn,
     required this.onTurnFanOff,
     required this.onSaveFanConfig,
@@ -313,6 +374,49 @@ class _ClimateSummaryCard extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Sensibilidade atual: ${latest?.formattedLightConfig ?? 'liga em <= 1800 ADC; apaga com histerese 350'}. Valores maiores acionam a lâmpada mais cedo se seu divisor LDR usa leitura menor no escuro.',
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: lightThresholdController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                      labelText: 'Limiar LDR raw',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: lightHysteresisController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(
+                      labelText: 'Histerese raw',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: savingLightConfig ? null : onSaveLightConfig,
+              icon: savingLightConfig
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.tune),
+              label: const Text('Salvar sensibilidade da lâmpada'),
             ),
             const Divider(height: 28),
             Text(
