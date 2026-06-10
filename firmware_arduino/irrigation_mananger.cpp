@@ -1,6 +1,7 @@
 #include "irrigation_manager.h"
 #include "actuators.h"
 #include "config.h"
+#include "sd_manager.h"
 #include "time_manager.h"
 #include "wifi_manager.h"
 
@@ -168,6 +169,7 @@ namespace
         doc["namespace"] = MQTT_NAMESPACE;
         doc["timestamp"] = nowIso8601();
         doc["uptime_ms"] = millis();
+        doc["event_id"] = String("rega_") + String(millis());
         doc["soil_raw"] = reading.soilRaw;
         doc["soil_moisture_percent"] = reading.soilMoisturePercent;
         doc["low_soil_moisture"] = reading.lowSoilMoisture;
@@ -189,18 +191,21 @@ namespace
 
     bool postIrrigationReading(const IrrigationReading &reading)
     {
+        const String payload = buildIrrigationPayload(reading);
+        sdAppendLogJson("rega", payload);
+
         if (strlen(IRRIGATION_INGEST_URL) == 0)
         {
-            Serial.println("[REGA][UPLOAD][WARN] IRRIGATION_INGEST_URL vazio; leitura nao enviada ao Firebase.");
+            Serial.println("[REGA][UPLOAD][WARN] IRRIGATION_INGEST_URL vazio; leitura mantida apenas no SD.");
             return false;
         }
         if (!isWiFiConnected())
         {
-            Serial.println("[REGA][UPLOAD][WARN] Wi-Fi indisponivel.");
+            Serial.println("[REGA][UPLOAD][WARN] Wi-Fi indisponivel; leitura mantida no SD.");
+            sdQueueFirebaseJson("rega", IRRIGATION_INGEST_URL, IRRIGATION_UPLOAD_TOKEN, payload);
             return false;
         }
 
-        const String payload = buildIrrigationPayload(reading);
         WiFiClientSecure client;
         client.setInsecure();
 
@@ -212,6 +217,7 @@ namespace
         if (!http.begin(client, IRRIGATION_INGEST_URL))
         {
             Serial.println("[REGA][UPLOAD][ERRO] http.begin falhou.");
+            sdQueueFirebaseJson("rega", IRRIGATION_INGEST_URL, IRRIGATION_UPLOAD_TOKEN, payload);
             return false;
         }
 
@@ -233,8 +239,11 @@ namespace
         delay(IRRIGATION_POST_UPLOAD_SETTLE_MS);
         irrigationYield();
 
+        const bool ok = status >= 200 && status < 300;
         Serial.printf("[REGA][UPLOAD] HTTP %d resposta=%s\n", status, response.substring(0, 160).c_str());
-        return status >= 200 && status < 300;
+        if (!ok)
+            sdQueueFirebaseJson("rega", IRRIGATION_INGEST_URL, IRRIGATION_UPLOAD_TOKEN, payload);
+        return ok;
     }
 
     void publishPumpTimeoutIfNeeded()

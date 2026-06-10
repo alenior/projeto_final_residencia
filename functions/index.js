@@ -145,6 +145,7 @@ exports.ingestClimateReading = onRequest({ invoker: 'public', timeoutSeconds: 30
       topic: `estufa/${namespace}/${deviceId}/clima`,
       timestamp_device: body.timestamp || null,
       uptime_ms: numberOrNull(body.uptime_ms),
+      event_id: body.event_id || null,
       ldr_raw: numberOrNull(body.ldr_raw),
       ldr_percent: numberOrNull(body.ldr_percent),
       low_light: boolOrFalse(body.low_light),
@@ -170,9 +171,19 @@ exports.ingestClimateReading = onRequest({ invoker: 'public', timeoutSeconds: 30
     };
 
     const base = db.collection('devices').doc(deviceId);
-    const docRef = await base.collection('climate').add(reading);
+    const eventId = body.event_id ? safeStorageName(body.event_id) : null;
+    const docRef = eventId ? base.collection('climate').doc(eventId) : base.collection('climate').doc();
+    const previous = await docRef.get();
+    await docRef.set(
+      {
+        ...reading,
+        created_at: previous.exists ? previous.get('created_at') || now : now,
+        updated_at: now,
+      },
+      { merge: true },
+    );
 
-    if (reading.auto_light_triggered && reading.low_light && reading.lamp_on) {
+    if (!previous.exists && reading.auto_light_triggered && reading.low_light && reading.lamp_on) {
       await base.collection('events').add({
         kind: 'low_light_lamp_on',
         namespace,
@@ -186,7 +197,7 @@ exports.ingestClimateReading = onRequest({ invoker: 'public', timeoutSeconds: 30
       });
     }
 
-    if (reading.fan_event || reading.auto_fan_triggered) {
+    if (!previous.exists && (reading.fan_event || reading.auto_fan_triggered)) {
       await base.collection('events').add({
         kind: reading.auto_fan_triggered ? 'fan_on_high_temperature' : `fan_${reading.fan_reason}`,
         namespace,
@@ -250,6 +261,7 @@ exports.ingestIrrigationReading = onRequest({ invoker: 'public', timeoutSeconds:
       topic: `estufa/${namespace}/${deviceId}/rega`,
       timestamp_device: body.timestamp || null,
       uptime_ms: numberOrNull(body.uptime_ms),
+      event_id: body.event_id || null,
       soil_raw: numberOrNull(body.soil_raw),
       soil_moisture_percent: numberOrNull(body.soil_moisture_percent),
       low_soil_moisture: boolOrFalse(body.low_soil_moisture),
@@ -268,9 +280,19 @@ exports.ingestIrrigationReading = onRequest({ invoker: 'public', timeoutSeconds:
     };
 
     const base = db.collection('devices').doc(deviceId);
-    const docRef = await base.collection('irrigation').add(reading);
+    const eventId = body.event_id ? safeStorageName(body.event_id) : null;
+    const docRef = eventId ? base.collection('irrigation').doc(eventId) : base.collection('irrigation').doc();
+    const previous = await docRef.get();
+    await docRef.set(
+      {
+        ...reading,
+        created_at: previous.exists ? previous.get('created_at') || now : now,
+        updated_at: now,
+      },
+      { merge: true },
+    );
 
-    if (reading.pump_event || reading.auto_pump_triggered) {
+    if (!previous.exists && (reading.pump_event || reading.auto_pump_triggered)) {
       await base.collection('events').add({
         kind: reading.auto_pump_triggered ? 'pump_on_dry_soil' : `pump_${reading.pump_reason}`,
         namespace,
@@ -334,6 +356,7 @@ exports.ingestPredatorAlert = onRequest({ invoker: 'public', timeoutSeconds: 30,
       topic: `estufa/${namespace}/${deviceId}/predadores`,
       timestamp_device: body.timestamp || null,
       uptime_ms: numberOrNull(body.uptime_ms),
+      event_id: body.event_id || null,
       motion_detected: boolOrFalse(body.motion_detected),
       monitoring_enabled: boolOrFalse(body.monitoring_enabled),
       buzzer_enabled: boolOrFalse(body.buzzer_enabled),
@@ -354,9 +377,19 @@ exports.ingestPredatorAlert = onRequest({ invoker: 'public', timeoutSeconds: 30,
     };
 
     const base = db.collection('devices').doc(deviceId);
-    const docRef = await base.collection('predators').add(reading);
+    const eventId = body.event_id ? safeStorageName(body.event_id) : null;
+    const docRef = eventId ? base.collection('predators').doc(eventId) : base.collection('predators').doc();
+    const previous = await docRef.get();
+    await docRef.set(
+      {
+        ...reading,
+        created_at: previous.exists ? previous.get('created_at') || now : now,
+        updated_at: now,
+      },
+      { merge: true },
+    );
 
-    if (reading.alert_event || reading.motion_detected) {
+    if (!previous.exists && (reading.alert_event || reading.motion_detected)) {
       const alertPayload = {
         kind: reading.motion_detected ? 'predator_motion_detected' : `predator_${reading.reason}`,
         namespace,
@@ -453,7 +486,7 @@ exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, m
 
     const proxyUrl = cameraProxyUrl(path);
 
-    const docRef = await db.collection('devices').doc(deviceId).collection('images').add({
+    const imageDoc = {
       device_id: deviceId,
       filename,
       path,
@@ -465,10 +498,19 @@ exports.uploadCameraImage = onRequest({ invoker: 'public', timeoutSeconds: 60, m
       upload_mode: isRawImage ? 'raw_image' : 'base64_json',
       proxy_url: proxyUrl,
       captured_at_device: capturedAt,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
       updated_at: admin.firestore.FieldValue.serverTimestamp(),
       source: 'esp32_ov5640',
-    });
+    };
+    const docRef = db.collection('devices').doc(deviceId).collection('images').doc(filename);
+    const previous = await docRef.get();
+    const previousCreatedAt = previous.exists ? previous.get('created_at') : null;
+    await docRef.set(
+      {
+        ...imageDoc,
+        created_at: previousCreatedAt || admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
 
     logger.info('Imagem da camera gravada', { deviceId, path, imageId: docRef.id, sizeBytes: imageBuffer.length });
     return res.status(200).json({ ok: true, path, imageId: docRef.id, sizeBytes: imageBuffer.length, proxyUrl });

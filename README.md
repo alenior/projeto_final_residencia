@@ -139,13 +139,16 @@ Dependências usadas pelos repositórios/modelos do dashboard:
 Para gerar `firebase_options.dart`, entre em `dashboard_estufa_iot/` e execute `flutterfire configure` após instalar a Firebase CLI oficial e o FlutterFire CLI. O arquivo é específico do projeto Firebase/local e está no `.gitignore`.
 
 
-### Visualização de imagens no Flutter
 
 ### Módulos Clima, Rega e Predadores no Flutter
 
 O módulo Clima lê `devices/{deviceId}/climate` para exibir histórico de temperatura, umidade, luminosidade, lâmpada LED e ventoinha. O módulo Rega lê `devices/{deviceId}/irrigation` para exibir as últimas leituras do solo e eventos da bomba. O módulo Predadores lê `devices/{deviceId}/predators` para exibir histórico de presença, alarme e buzzer. Os botões manuais gravam comandos `iluminar`, `ventilar` e `irrigar` em `devices/{deviceId}/commands`, enquanto as configurações da ventoinha/lâmpada gravam `configurar_clima` e a configuração da rega grava `configurar_rega`; a Function `dispatchCommandToMqtt` publica tudo no MQTT para o ESP32-S3. O firmware liga a lâmpada automaticamente quando o limiar de LDR é atingido (`LDR_DARK_THRESHOLD_RAW`, agora mais sensível por padrão em 1800 raw), permite ajustar limiar/histerese pelo Flutter, aciona a ventoinha quando a temperatura supera o limiar configurado e registra os eventos via `ingestClimateReading`. Na Rega, o ESP32 aciona a bomba quando a umidade do solo fica abaixo de `SOIL_MIN_MOISTURE_PERCENT`, sempre com timeout `IRRIGATION_PUMP_TIMEOUT_MS`, e grava o histórico via `ingestIrrigationReading`. Em Predadores, o PIR dispara alerta informativo com buzzer PWM e grava registros via `ingestPredatorAlert`; o Flutter envia `configurar_predadores`, `silenciar_predadores` e `testar_buzzer`.
 
 A AppBar do dashboard consome `devices/{deviceId}/status/current` para mostrar um indicador Online/Offline e abrir a tela `/device`, onde são exibidos ID, namespace, firmware, MAC, IP, SSID, RSSI, uptime, heap e PSRAM livres. O firmware Arduino publica essas informações no tópico MQTT `estufa/{namespace}/{deviceId}/status`; mantenha o bridge/Function `ingestMqttEvent` recebendo eventos `kind=status` para espelhar esse payload no Firestore.
+
+### Armazenamento local em SD Card
+
+O firmware Arduino inicializa o leitor microSD em SDMMC 1-bit com `PIN_SD_CLK` GPIO39, `PIN_SD_CMD` GPIO38, `PIN_SD_D0` GPIO40 e `SDMMC_FREQUENCY_KHZ` 25000. As leituras principais são registradas em NDJSON dentro de `/logs`, e cada captura da câmera é salva em `/imagens` antes da tentativa de upload. Quando não houver internet ou o upload falhar, imagens entram em `/fila/imagens_pendentes.ndjson` e leituras/eventos JSON entram em `/fila/registros_pendentes.ndjson`; o loop chama `processPendingCameraUploads()` e `processPendingSdJsonUploads()` periodicamente e remove da fila somente itens enviados com sucesso, evitando reenvio duplicado de imagens pelo mesmo nome de arquivo.
 
 ### Visualização de imagens no Flutter
 

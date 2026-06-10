@@ -1,11 +1,13 @@
 #include "camera_manager.h"
 #include "config.h"
+#include "sd_manager.h"
 #include "time_manager.h"
 #include "wifi_manager.h"
 
 #include <HTTPClient.h>
 #include <cstring>
 #include <Preferences.h>
+#include <SD_MMC.h>
 #include <WiFiClientSecure.h>
 #if __has_include(<esp_camera.h>)
 #include <esp_camera.h>
@@ -55,33 +57,11 @@
 #ifndef CAMERA_UPLOAD_CHUNK_BYTES
 #define CAMERA_UPLOAD_CHUNK_BYTES 1024UL
 #endif
+#ifndef SD_PENDING_SYNC_MAX_PER_CYCLE
+#define SD_PENDING_SYNC_MAX_PER_CYCLE 1
+#endif
 #ifndef CAMERA_DIAGNOSTICS_USE_NVS
 #define CAMERA_DIAGNOSTICS_USE_NVS false
-#endif
-
-#ifndef CAMERA_BRIGHTNESS
-#define CAMERA_BRIGHTNESS 0
-#endif
-#ifndef CAMERA_CONTRAST
-#define CAMERA_CONTRAST 1
-#endif
-#ifndef CAMERA_SATURATION
-#define CAMERA_SATURATION 0
-#endif
-#ifndef CAMERA_AE_LEVEL
-#define CAMERA_AE_LEVEL 0
-#endif
-#ifndef CAMERA_ENABLE_LENC
-#define CAMERA_ENABLE_LENC true
-#endif
-#ifndef CAMERA_ENABLE_RAW_GMA
-#define CAMERA_ENABLE_RAW_GMA true
-#endif
-#ifndef CAMERA_ENABLE_AWB_GAIN
-#define CAMERA_ENABLE_AWB_GAIN true
-#endif
-#ifndef CAMERA_ENABLE_AEC2
-#define CAMERA_ENABLE_AEC2 true
 #endif
 
 #ifndef CAMERA_BRIGHTNESS
@@ -347,6 +327,97 @@ namespace
         return ok;
     }
 
+    bool uploadJpegFileManualHttps(
+        const char *localPath,
+        const String &filename,
+        const char *reason,
+        const String &capturedAt,
+        size_t fallbackLength,
+        int *statusCode,
+        String *responsePreview)
+    {
+        String host;
+        String path;
+        uint16_t port = 443;
+        if (!parseHttpsUrl(CAMERA_UPLOAD_URL, &host, &port, &path))
+        {
+            *statusCode = -2;
+            *responsePreview = "CAMERA_UPLOAD_URL precisa iniciar com https://";
+            return false;
+        }
+
+        File file = SD_MMC.open(localPath, FILE_READ);
+        if (!file)
+        {
+            *statusCode = -6;
+            *responsePreview = "falha ao abrir imagem local no SD";
+            return false;
+        }
+        const size_t imageLength = file.size() > 0 ? file.size() : fallbackLength;
+
+        WiFiClientSecure client;
+        client.setInsecure();
+        client.setTimeout(CAMERA_HTTP_TIMEOUT_MS / 1000);
+
+        if (!client.connect(host.c_str(), port))
+        {
+            *statusCode = -3;
+            *responsePreview = "falha ao conectar no host HTTPS";
+            file.close();
+            client.stop();
+            return false;
+        }
+
+        client.printf("POST %s HTTP/1.1\r\n", path.c_str());
+        client.printf("Host: %s\r\n", host.c_str());
+        client.print("Connection: close\r\n");
+        client.printf("Content-Type: %s\r\n", CAMERA_CONTENT_TYPE);
+        client.printf("Content-Length: %u\r\n", static_cast<unsigned>(imageLength));
+        client.printf("x-camera-upload-token: %s\r\n", CAMERA_UPLOAD_TOKEN);
+        client.printf("x-device-id: %s\r\n", DEVICE_ID);
+        client.printf("x-namespace: %s\r\n", MQTT_NAMESPACE);
+        client.printf("x-filename: %s\r\n", filename.c_str());
+        client.printf("x-reason: %s\r\n", reason);
+        client.printf("x-captured-at: %s\r\n", capturedAt.c_str());
+        client.print("\r\n");
+
+        uint8_t buffer[1024];
+        while (file.available())
+        {
+            const size_t wanted = min(static_cast<size_t>(sizeof(buffer)), static_cast<size_t>(CAMERA_UPLOAD_CHUNK_BYTES));
+            const int readBytes = file.read(buffer, wanted);
+            if (readBytes <= 0)
+                break;
+            const size_t written = client.write(buffer, static_cast<size_t>(readBytes));
+            if (written != static_cast<size_t>(readBytes))
+            {
+                *statusCode = -4;
+                *responsePreview = "falha ao escrever chunk HTTPS a partir do SD";
+                file.close();
+                client.stop();
+                return false;
+            }
+            cameraYield();
+        }
+        file.close();
+        client.flush();
+
+        const bool ok = readHttpsResponse(client, statusCode, responsePreview);
+        client.stop();
+        return ok;
+    }
+
+    bool uploadPendingSdImage(const char *path, const char *filename, const char *reason, const char *capturedAt, size_t sizeBytes)
+    {
+        if (!isWiFiConnected())
+            return false;
+        int status = 0;
+        String response;
+        const bool ok = uploadJpegFileManualHttps(path, String(filename), reason, String(capturedAt), sizeBytes, &status, &response);
+        Serial.printf("[CAMERA][SD_SYNC] HTTP %d arquivo=%s resposta=%s\n", status, filename, response.substring(0, 120).c_str());
+        return ok && status >= 200 && status < 300;
+    }
+
     bool jsonBoolOr(JsonObject command, const char *a, const char *b, const char *c, bool fallback)
     {
         if (command[a].is<bool>())
@@ -577,31 +648,6 @@ bool initCamera()
                       CAMERA_ENABLE_RAW_GMA ? "on" : "off",
                       CAMERA_ENABLE_AWB_GAIN ? "on" : "off",
                       CAMERA_ENABLE_AEC2 ? "on" : "off");
-        if (sensor->set_brightness)
-            sensor->set_brightness(sensor, CAMERA_BRIGHTNESS);
-        if (sensor->set_contrast)
-            sensor->set_contrast(sensor, CAMERA_CONTRAST);
-        if (sensor->set_saturation)
-            sensor->set_saturation(sensor, CAMERA_SATURATION);
-        if (sensor->set_ae_level)
-            sensor->set_ae_level(sensor, CAMERA_AE_LEVEL);
-        if (sensor->set_lenc)
-            sensor->set_lenc(sensor, CAMERA_ENABLE_LENC ? 1 : 0);
-        if (sensor->set_raw_gma)
-            sensor->set_raw_gma(sensor, CAMERA_ENABLE_RAW_GMA ? 1 : 0);
-        if (sensor->set_awb_gain)
-            sensor->set_awb_gain(sensor, CAMERA_ENABLE_AWB_GAIN ? 1 : 0);
-        if (sensor->set_aec2)
-            sensor->set_aec2(sensor, CAMERA_ENABLE_AEC2 ? 1 : 0);
-        Serial.printf("[CAMERA][QUALIDADE] brightness=%d contrast=%d saturation=%d ae_level=%d lenc=%s raw_gma=%s awb_gain=%s aec2=%s\n",
-                      CAMERA_BRIGHTNESS,
-                      CAMERA_CONTRAST,
-                      CAMERA_SATURATION,
-                      CAMERA_AE_LEVEL,
-                      CAMERA_ENABLE_LENC ? "on" : "off",
-                      CAMERA_ENABLE_RAW_GMA ? "on" : "off",
-                      CAMERA_ENABLE_AWB_GAIN ? "on" : "off",
-                      CAMERA_ENABLE_AEC2 ? "on" : "off");
     }
 
     cameraReady = true;
@@ -616,12 +662,6 @@ bool captureAndUpload(const char *reason)
     if (!initCamera())
     {
         saveCameraDiagnostic("init_failed");
-        return false;
-    }
-    if (!isWiFiConnected())
-    {
-        Serial.println("[CAMERA][UPLOAD][WARN] Wi-Fi indisponivel.");
-        saveCameraDiagnostic("wifi_unavailable");
         return false;
     }
 
@@ -705,58 +745,80 @@ bool captureAndUpload(const char *reason)
         }
     }
 
+    const bool savedLocal = sdSaveCameraImage(filename, imageData, imageLength, capturedAt, reason, false);
+    bool queuedPending = false;
+    if (!savedLocal)
+    {
+        Serial.println("[CAMERA][SD][WARN] Imagem nao foi salva localmente no SD.");
+    }
+
     int status = 0;
     String response;
     bool ok = false;
 
-    cameraYield();
-    Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u modo=%s heap=%lu psram=%lu\n",
-                  filename.c_str(),
-                  static_cast<unsigned>(imageLength),
-                  CAMERA_UPLOAD_USE_HTTPCLIENT ? "HTTPClient" : "HTTPS_CHUNKED",
-                  static_cast<unsigned long>(ESP.getFreeHeap()),
-                  static_cast<unsigned long>(ESP.getFreePsram()));
-
-    if (CAMERA_UPLOAD_USE_HTTPCLIENT)
+    if (!isWiFiConnected())
     {
-        WiFiClientSecure client;
-        client.setInsecure(); // Prototipo: substitua por CA raiz em producao.
-
-        HTTPClient http;
-        http.setReuse(false);
-        http.setTimeout(CAMERA_HTTP_TIMEOUT_MS);
-        http.useHTTP10(true);
-        if (!http.begin(client, CAMERA_UPLOAD_URL))
-        {
-            Serial.println("[CAMERA][UPLOAD][ERRO] http.begin falhou.");
-            saveCameraDiagnostic("http_begin_failed");
-            if (fb != nullptr)
-                esp_camera_fb_return(fb);
-            if (copiedImage != nullptr)
-                free(copiedImage);
-            return false;
-        }
-
-        http.addHeader("Content-Type", CAMERA_CONTENT_TYPE);
-        http.addHeader("x-camera-upload-token", CAMERA_UPLOAD_TOKEN);
-        http.addHeader("x-device-id", DEVICE_ID);
-        http.addHeader("x-namespace", MQTT_NAMESPACE);
-        http.addHeader("x-filename", filename);
-        http.addHeader("x-reason", reason);
-        http.addHeader("x-captured-at", capturedAt);
-
-        saveCameraDiagnostic("http_post_start", static_cast<int>(imageLength));
-        status = http.POST(const_cast<uint8_t *>(imageData), imageLength);
-        saveCameraDiagnostic("http_post_done", status);
-        cameraYield();
-        response = http.getString();
-        http.end();
-        client.stop();
-        ok = status >= 200 && status < 300;
+        Serial.println("[CAMERA][UPLOAD][WARN] Wi-Fi indisponivel; imagem ficara pendente no SD.");
+        saveCameraDiagnostic("wifi_unavailable");
+        if (savedLocal)
+            queuedPending = sdAppendPendingImage(filename, capturedAt, reason, imageLength);
     }
     else
     {
-        ok = uploadJpegManualHttps(imageData, imageLength, filename, reason, capturedAt, &status, &response);
+        cameraYield();
+        Serial.printf("[CAMERA][UPLOAD] Enviando JPEG binario: arquivo=%s bytes=%u modo=%s heap=%lu psram=%lu\n",
+                      filename.c_str(),
+                      static_cast<unsigned>(imageLength),
+                      CAMERA_UPLOAD_USE_HTTPCLIENT ? "HTTPClient" : "HTTPS_CHUNKED",
+                      static_cast<unsigned long>(ESP.getFreeHeap()),
+                      static_cast<unsigned long>(ESP.getFreePsram()));
+
+        if (CAMERA_UPLOAD_USE_HTTPCLIENT)
+        {
+            WiFiClientSecure client;
+            client.setInsecure(); // Prototipo: substitua por CA raiz em producao.
+
+            HTTPClient http;
+            http.setReuse(false);
+            http.setTimeout(CAMERA_HTTP_TIMEOUT_MS);
+            http.useHTTP10(true);
+            if (!http.begin(client, CAMERA_UPLOAD_URL))
+            {
+                Serial.println("[CAMERA][UPLOAD][ERRO] http.begin falhou.");
+                saveCameraDiagnostic("http_begin_failed");
+                status = -5;
+                response = "http.begin falhou";
+            }
+            else
+            {
+                http.addHeader("Content-Type", CAMERA_CONTENT_TYPE);
+                http.addHeader("x-camera-upload-token", CAMERA_UPLOAD_TOKEN);
+                http.addHeader("x-device-id", DEVICE_ID);
+                http.addHeader("x-namespace", MQTT_NAMESPACE);
+                http.addHeader("x-filename", filename);
+                http.addHeader("x-reason", reason);
+                http.addHeader("x-captured-at", capturedAt);
+
+                saveCameraDiagnostic("http_post_start", static_cast<int>(imageLength));
+                status = http.POST(const_cast<uint8_t *>(imageData), imageLength);
+                saveCameraDiagnostic("http_post_done", status);
+                cameraYield();
+                response = http.getString();
+                http.end();
+                client.stop();
+                ok = status >= 200 && status < 300;
+            }
+        }
+        else
+        {
+            ok = uploadJpegManualHttps(imageData, imageLength, filename, reason, capturedAt, &status, &response);
+            ok = ok && status >= 200 && status < 300;
+        }
+    }
+
+    if (savedLocal && !ok && !queuedPending)
+    {
+        sdAppendPendingImage(filename, capturedAt, reason, imageLength);
     }
 
     if (fb != nullptr)
@@ -773,6 +835,13 @@ bool captureAndUpload(const char *reason)
                   static_cast<unsigned long>(ESP.getFreePsram()));
     saveCameraDiagnostic(ok ? "upload_success" : "upload_http_error", status);
     return ok;
+}
+
+void processPendingCameraUploads()
+{
+    if (!isWiFiConnected() || !isSdReady())
+        return;
+    processPendingSdImages(uploadPendingSdImage, SD_PENDING_SYNC_MAX_PER_CYCLE);
 }
 
 bool isAutoCaptureDue()
@@ -851,6 +920,10 @@ bool captureAndUpload(const char *reason)
 {
     Serial.printf("[CAMERA][ERRO] Captura '%s' indisponivel: esp_camera.h ausente.\n", reason);
     return false;
+}
+
+void processPendingCameraUploads()
+{
 }
 
 bool isAutoCaptureDue()

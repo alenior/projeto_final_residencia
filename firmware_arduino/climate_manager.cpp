@@ -1,6 +1,7 @@
 #include "climate_manager.h"
 #include "actuators.h"
 #include "config.h"
+#include "sd_manager.h"
 #include "time_manager.h"
 #include "wifi_manager.h"
 
@@ -285,6 +286,7 @@ namespace
         doc["namespace"] = MQTT_NAMESPACE;
         doc["timestamp"] = nowIso8601();
         doc["uptime_ms"] = millis();
+        doc["event_id"] = String("clima_") + String(millis());
         doc["ldr_raw"] = reading.ldrRaw;
         doc["ldr_percent"] = reading.ldrPercent;
         doc["low_light"] = reading.lowLight;
@@ -502,18 +504,21 @@ namespace
 
     bool postClimateReading(const ClimateRuntimeReading &reading)
     {
+        const String payload = buildClimatePayload(reading);
+        sdAppendLogJson("clima", payload);
+
         if (strlen(CLIMATE_INGEST_URL) == 0)
         {
-            Serial.println("[CLIMA][UPLOAD][WARN] CLIMATE_INGEST_URL vazio; leitura nao enviada ao Firebase.");
+            Serial.println("[CLIMA][UPLOAD][WARN] CLIMATE_INGEST_URL vazio; leitura mantida apenas no SD.");
             return false;
         }
         if (!isWiFiConnected())
         {
-            Serial.println("[CLIMA][UPLOAD][WARN] Wi-Fi indisponivel.");
+            Serial.println("[CLIMA][UPLOAD][WARN] Wi-Fi indisponivel; leitura mantida no SD.");
+            sdQueueFirebaseJson("clima", CLIMATE_INGEST_URL, CLIMATE_UPLOAD_TOKEN, payload);
             return false;
         }
 
-        const String payload = buildClimatePayload(reading);
         Serial.printf("[CLIMA][UPLOAD] Enviando leitura: ldr=%d temp=%.2f umid=%.2f lamp=%s fan=%s modo=%s\n",
                       reading.ldrRaw,
                       reading.temperatureC,
@@ -522,11 +527,12 @@ namespace
                       reading.fanOn ? "ON" : "OFF",
                       CLIMATE_UPLOAD_USE_HTTPCLIENT ? "HTTPClient" : "TLS_RAW");
 
-        if (CLIMATE_UPLOAD_USE_HTTPCLIENT)
-        {
-            return postClimateReadingWithHttpClient(reading, payload);
-        }
-        return postClimateReadingWithRawTls(reading, payload);
+        const bool ok = CLIMATE_UPLOAD_USE_HTTPCLIENT
+                            ? postClimateReadingWithHttpClient(reading, payload)
+                            : postClimateReadingWithRawTls(reading, payload);
+        if (!ok)
+            sdQueueFirebaseJson("clima", CLIMATE_INGEST_URL, CLIMATE_UPLOAD_TOKEN, payload);
+        return ok;
     }
 
     ClimateRuntimeReading readClimateSensors(bool evaluateFan = false, bool forceFanCheck = false)

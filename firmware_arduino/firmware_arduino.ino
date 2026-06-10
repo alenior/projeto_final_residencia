@@ -11,6 +11,7 @@
 #include "irrigation_manager.h"
 #include "mqtt_manager.h"
 #include "predator_manager.h"
+#include "sd_manager.h"
 #include "time_manager.h"
 #include "wifi_manager.h"
 
@@ -26,6 +27,9 @@ extern void printCameraUploadDiagnostic();
 #ifndef DEVICE_STATUS_INTERVAL_MS
 #define DEVICE_STATUS_INTERVAL_MS 30000UL
 #endif
+#ifndef SD_SYNC_INTERVAL_MS
+#define SD_SYNC_INTERVAL_MS 60000UL
+#endif
 #ifndef CAMERA_BUTTON_ACTIVE_LOW
 #define CAMERA_BUTTON_ACTIVE_LOW true
 #endif
@@ -39,6 +43,7 @@ extern void printCameraUploadDiagnostic();
 unsigned long lastTelemetryMs = 0;
 unsigned long lastMqttDebugMs = 0;
 unsigned long lastStatusMs = 0;
+unsigned long lastSdSyncMs = 0;
 unsigned long lastCameraButtonChangeMs = 0;
 unsigned long lastCameraButtonCaptureMs = 0;
 bool lastCameraButtonReading = !CAMERA_BUTTON_ACTIVE_LOW;
@@ -226,6 +231,9 @@ void setup()
     Serial.println("[BOOT] Sincronizando horario...");
     flushBootLog();
     setupTimeSync();
+    Serial.println("[BOOT] Inicializando SD Card...");
+    flushBootLog();
+    setupSdManager();
     Serial.println("[BOOT] Inicializando clima...");
     flushBootLog();
     setupClimateManager();
@@ -260,6 +268,13 @@ void loop()
         publishStatus(true);
     }
 
+    if (millis() - lastSdSyncMs >= SD_SYNC_INTERVAL_MS)
+    {
+        lastSdSyncMs = millis();
+        processPendingSdJsonUploads(SD_PENDING_SYNC_MAX_PER_CYCLE);
+        processPendingCameraUploads();
+    }
+
     if (millis() - lastMqttDebugMs >= 30000UL)
     {
         lastMqttDebugMs = millis();
@@ -272,7 +287,9 @@ void loop()
     if (millis() - lastTelemetryMs >= TELEMETRY_INTERVAL_MS)
     {
         lastTelemetryMs = millis();
-        publishTelemetry(buildTelemetryJson());
+        const String telemetry = buildTelemetryJson();
+        sdAppendLogJson("telemetria", telemetry);
+        publishTelemetry(telemetry);
     }
 
     if (isAutoCaptureDue())

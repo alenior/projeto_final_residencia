@@ -1,6 +1,7 @@
 #include "predator_manager.h"
 #include "actuators.h"
 #include "config.h"
+#include "sd_manager.h"
 #include "time_manager.h"
 #include "wifi_manager.h"
 
@@ -198,6 +199,7 @@ namespace
         doc["namespace"] = MQTT_NAMESPACE;
         doc["timestamp"] = nowIso8601();
         doc["uptime_ms"] = millis();
+        doc["event_id"] = String("predadores_") + String(millis());
         doc["motion_detected"] = reading.motionDetected;
         doc["monitoring_enabled"] = reading.monitoringEnabled;
         doc["buzzer_enabled"] = reading.buzzerEnabled;
@@ -221,18 +223,21 @@ namespace
 
     bool postPredatorReading(const PredatorReading &reading)
     {
+        const String payload = buildPredatorPayload(reading);
+        sdAppendLogJson("predadores", payload);
+
         if (strlen(PREDATOR_INGEST_URL) == 0)
         {
-            Serial.println("[PREDADORES][UPLOAD][WARN] PREDATOR_INGEST_URL vazio; alerta nao enviado ao Firebase.");
+            Serial.println("[PREDADORES][UPLOAD][WARN] PREDATOR_INGEST_URL vazio; alerta mantido apenas no SD.");
             return false;
         }
         if (!isWiFiConnected())
         {
-            Serial.println("[PREDADORES][UPLOAD][WARN] Wi-Fi indisponivel.");
+            Serial.println("[PREDADORES][UPLOAD][WARN] Wi-Fi indisponivel; alerta mantido no SD.");
+            sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
             return false;
         }
 
-        const String payload = buildPredatorPayload(reading);
         WiFiClientSecure client;
         client.setInsecure();
 
@@ -244,6 +249,7 @@ namespace
         if (!http.begin(client, PREDATOR_INGEST_URL))
         {
             Serial.println("[PREDADORES][UPLOAD][ERRO] http.begin falhou.");
+            sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
             return false;
         }
 
@@ -264,8 +270,11 @@ namespace
         delay(PREDATOR_POST_UPLOAD_SETTLE_MS);
         predatorYield();
 
+        const bool ok = status >= 200 && status < 300;
         Serial.printf("[PREDADORES][UPLOAD] HTTP %d resposta=%s\n", status, response.substring(0, 160).c_str());
-        return status >= 200 && status < 300;
+        if (!ok)
+            sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
+        return ok;
     }
 
     unsigned long jsonULongOr(JsonObject command, const char *a, const char *b, unsigned long fallback)
