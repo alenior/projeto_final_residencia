@@ -15,8 +15,11 @@
 #include "time_manager.h"
 #include "wifi_manager.h"
 
-// Declaracao explicita para evitar falha de resolucao no preprocessamento da IDE Arduino.
+// Declaracoes explicitas para evitar falhas de resolucao no preprocessamento da IDE Arduino.
+// A IDE Arduino gera um .ino.cpp intermediario e, em alguns casos, nao propaga
+// todas as declaracoes vindas dos headers antes de compilar o loop().
 extern void printCameraUploadDiagnostic();
+extern void processPendingCameraUploads();
 
 #ifndef PIN_BOTAO_CAMERA
 #define PIN_BOTAO_CAMERA 45

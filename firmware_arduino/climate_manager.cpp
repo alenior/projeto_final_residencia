@@ -134,7 +134,9 @@ namespace
     unsigned long manualLightOverrideUntilMs = 0;
     bool manualOverrideActive = false;
     bool hdcOnline = false;
+#if CLIMATE_HDC1080_ENABLED
     bool hdcI2cStarted = false;
+#endif
 
     float ldrPercentFromRaw(int raw)
     {
