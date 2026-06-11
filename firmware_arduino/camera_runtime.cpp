@@ -63,6 +63,12 @@
 #ifndef CAMERA_DIAGNOSTICS_USE_NVS
 #define CAMERA_DIAGNOSTICS_USE_NVS false
 #endif
+#ifndef CAMERA_BOOT_SAFE_MODE
+#define CAMERA_BOOT_SAFE_MODE 1
+#endif
+#ifndef CAMERA_INIT_ON_BOOT
+#define CAMERA_INIT_ON_BOOT (!CAMERA_BOOT_SAFE_MODE)
+#endif
 
 #ifndef CAMERA_BRIGHTNESS
 #define CAMERA_BRIGHTNESS 0
@@ -530,16 +536,27 @@ void printCameraUploadDiagnostic()
 void setupCameraManager()
 {
     loadSchedule();
-    Serial.printf("[CAMERA][CFG] auto=%s horario=%02u:%02u periodicidade=%uh\n",
+    Serial.printf("[CAMERA][CFG] auto=%s horario=%02u:%02u periodicidade=%uh boot_safe=%d init_on_boot=%d\n",
                   scheduleConfig.enabled ? "true" : "false",
                   scheduleConfig.hour,
                   scheduleConfig.minute,
-                  scheduleConfig.intervalHours);
+                  scheduleConfig.intervalHours,
+                  CAMERA_BOOT_SAFE_MODE,
+                  CAMERA_INIT_ON_BOOT);
+#if CAMERA_BOOT_SAFE_MODE || !CAMERA_INIT_ON_BOOT
+    Serial.println("[CAMERA][WARN] Inicializacao da camera no boot ignorada; CAMERA_BOOT_SAFE_MODE=1 ou CAMERA_INIT_ON_BOOT=0.");
+    return;
+#else
     initCamera();
+#endif
 }
 
 bool initCamera()
 {
+#if CAMERA_BOOT_SAFE_MODE
+    Serial.println("[CAMERA][WARN] initCamera bloqueado por CAMERA_BOOT_SAFE_MODE=1; esp_camera_init nao sera chamado.");
+    return false;
+#endif
     if (cameraReady)
         return true;
 
@@ -658,6 +675,10 @@ bool initCamera()
 
 bool captureAndUpload(const char *reason)
 {
+#if CAMERA_BOOT_SAFE_MODE
+    Serial.printf("[CAMERA][WARN] Captura '%s' ignorada: CAMERA_BOOT_SAFE_MODE=1.\n", reason);
+    return false;
+#endif
     saveCameraDiagnostic("capture_start");
     if (!initCamera())
     {
@@ -846,6 +867,9 @@ void processPendingCameraUploads()
 
 bool isAutoCaptureDue()
 {
+#if CAMERA_BOOT_SAFE_MODE
+    return false;
+#endif
     if (!scheduleConfig.enabled || !isTimeValid())
         return false;
 

@@ -5,6 +5,12 @@
 #ifndef MQTT_USE_PUBSUBCLIENT
 #define MQTT_USE_PUBSUBCLIENT 0
 #endif
+#ifndef MQTT_BOOT_SAFE_MODE
+#define MQTT_BOOT_SAFE_MODE 1
+#endif
+#ifndef MQTT_CONNECT_ON_BOOT
+#define MQTT_CONNECT_ON_BOOT (!MQTT_BOOT_SAFE_MODE)
+#endif
 
 #if MQTT_USE_PUBSUBCLIENT
 #include <PubSubClient.h>
@@ -128,7 +134,12 @@ namespace
 void setupMqtt(MqttCommandCallback callback)
 {
     commandCallback = callback;
-#if ESTUFA_HAS_PUBSUBCLIENT
+#if MQTT_BOOT_SAFE_MODE || !MQTT_CONNECT_ON_BOOT
+    Serial.printf("[MQTT][WARN] Conexao MQTT no boot ignorada: safe_mode=%d connect_on_boot=%d pubsub=%d.\n",
+                  MQTT_BOOT_SAFE_MODE,
+                  MQTT_CONNECT_ON_BOOT,
+                  ESTUFA_HAS_PUBSUBCLIENT);
+#elif ESTUFA_HAS_PUBSUBCLIENT
     connectMqtt();
 #else
     Serial.println("[MQTT][WARN] PubSubClient.h desabilitado/ausente; MQTT desabilitado nesta compilacao.");
@@ -137,7 +148,9 @@ void setupMqtt(MqttCommandCallback callback)
 
 void mqttLoop()
 {
-#if ESTUFA_HAS_PUBSUBCLIENT
+#if MQTT_BOOT_SAFE_MODE
+    return;
+#elif ESTUFA_HAS_PUBSUBCLIENT
     PubSubClient &client = mqttClientRef();
     if (!client.connected())
     {
@@ -156,7 +169,10 @@ void mqttLoop()
 
 bool publishTelemetry(const String &payloadJson)
 {
-#if ESTUFA_HAS_PUBSUBCLIENT
+#if MQTT_BOOT_SAFE_MODE
+    (void)payloadJson;
+    return false;
+#elif ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
     return mqttClientRef().publish(topicTelemetry().c_str(), payloadJson.c_str());
@@ -168,7 +184,10 @@ bool publishTelemetry(const String &payloadJson)
 
 bool publishStatus(bool online)
 {
-#if ESTUFA_HAS_PUBSUBCLIENT
+#if MQTT_BOOT_SAFE_MODE
+    (void)online;
+    return false;
+#elif ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
 
@@ -196,7 +215,10 @@ bool publishStatus(bool online)
 
 bool publishCameraEvent(const String &payloadJson)
 {
-#if ESTUFA_HAS_PUBSUBCLIENT
+#if MQTT_BOOT_SAFE_MODE
+    (void)payloadJson;
+    return false;
+#elif ESTUFA_HAS_PUBSUBCLIENT
     if (!connectMqtt())
         return false;
     return mqttClientRef().publish(topicCamera().c_str(), payloadJson.c_str());
@@ -208,7 +230,9 @@ bool publishCameraEvent(const String &payloadJson)
 
 bool isMqttConnected()
 {
-#if ESTUFA_HAS_PUBSUBCLIENT
+#if MQTT_BOOT_SAFE_MODE
+    return false;
+#elif ESTUFA_HAS_PUBSUBCLIENT
     return mqttClientRef().connected();
 #else
     return false;
@@ -217,7 +241,9 @@ bool isMqttConnected()
 
 int mqttConnectionState()
 {
-#if ESTUFA_HAS_PUBSUBCLIENT
+#if MQTT_BOOT_SAFE_MODE
+    return -98;
+#elif ESTUFA_HAS_PUBSUBCLIENT
     return mqttClientRef().state();
 #else
     return -99;
