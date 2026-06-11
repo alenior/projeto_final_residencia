@@ -13,6 +13,9 @@
 #ifndef IRRIGATION_INGEST_URL
 #define IRRIGATION_INGEST_URL ""
 #endif
+#ifndef TLS_UPLOAD_MIN_SPACING_MS
+#define TLS_UPLOAD_MIN_SPACING_MS 3000UL
+#endif
 #ifndef IRRIGATION_UPLOAD_TOKEN
 #define IRRIGATION_UPLOAD_TOKEN CAMERA_UPLOAD_TOKEN
 #endif
@@ -306,6 +309,13 @@ namespace
     {
         (void)reading;
 
+        if (!tlsUploadSpacingElapsed(TLS_UPLOAD_MIN_SPACING_MS))
+        {
+            Serial.println("[REGA][UPLOAD][SKIP] Outra sessao TLS recente; adiando para evitar corrupcao de heap.");
+            sdQueueFirebaseJson("rega", IRRIGATION_INGEST_URL, IRRIGATION_UPLOAD_TOKEN, payload);
+            return false;
+        }
+
         String host;
         String path;
         uint16_t port;
@@ -364,6 +374,7 @@ namespace
         String response;
         const bool responseRead = readIrrigationHttpsResponse(&client, &status, &response);
         client.stop();
+        noteTlsUploadFinished();
         delay(IRRIGATION_POST_UPLOAD_SETTLE_MS);
         irrigationYield();
 

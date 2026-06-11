@@ -15,6 +15,9 @@
 #ifndef CLIMATE_INGEST_URL
 #define CLIMATE_INGEST_URL ""
 #endif
+#ifndef TLS_UPLOAD_MIN_SPACING_MS
+#define TLS_UPLOAD_MIN_SPACING_MS 3000UL
+#endif
 #ifndef CLIMATE_UPLOAD_TOKEN
 #define CLIMATE_UPLOAD_TOKEN CAMERA_UPLOAD_TOKEN
 #endif
@@ -504,6 +507,7 @@ namespace
         String response;
         const bool ok = readClimateHttpsResponse(client, &status, &response);
         client.stop();
+        noteTlsUploadFinished();
         delay(CLIMATE_POST_UPLOAD_SETTLE_MS);
 
         Serial.printf("[CLIMA][UPLOAD] HTTP %d resposta=%s\n", status, response.c_str());
@@ -561,6 +565,13 @@ namespace
         if (!isWiFiConnected())
         {
             Serial.println("[CLIMA][UPLOAD][WARN] Wi-Fi indisponivel; leitura mantida no SD.");
+            sdQueueFirebaseJson("clima", CLIMATE_INGEST_URL, CLIMATE_UPLOAD_TOKEN, payload);
+            return false;
+        }
+
+        if (!tlsUploadSpacingElapsed(TLS_UPLOAD_MIN_SPACING_MS))
+        {
+            Serial.println("[CLIMA][UPLOAD][SKIP] Outra sessao TLS recente; adiando para evitar corrupcao de heap.");
             sdQueueFirebaseJson("clima", CLIMATE_INGEST_URL, CLIMATE_UPLOAD_TOKEN, payload);
             return false;
         }

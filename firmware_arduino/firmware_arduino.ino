@@ -239,6 +239,9 @@ void setup()
     Serial.println("======================================================");
     flushBootLog();
 
+    Serial.printf("[HEAP][CHECK] inicio setup integridade=%d\n", heap_caps_check_integrity_all(true));
+    flushBootLog();
+
     Serial.println("[BOOT] Inicializando atuadores...");
     flushBootLog();
     setupActuators();
@@ -246,6 +249,8 @@ void setup()
     Serial.println("[BOOT] Conectando Wi-Fi...");
     flushBootLog();
     setupWiFi();
+    Serial.printf("[HEAP][CHECK] pos-WiFi integridade=%d\n", heap_caps_check_integrity_all(true));
+    flushBootLog();
     Serial.println("[BOOT] Sincronizando horario...");
     flushBootLog();
     setupTimeSync();
@@ -269,9 +274,13 @@ void setup()
     flushBootLog();
     setupMqtt(handleCommand);
 #endif
+    Serial.printf("[HEAP][CHECK] pos-MQTT integridade=%d\n", heap_caps_check_integrity_all(true));
+    flushBootLog();
     Serial.println("[BOOT] Inicializando clima...");
     flushBootLog();
     setupClimateManager();
+    Serial.printf("[HEAP][CHECK] pos-clima (pre-camera) integridade=%d\n", heap_caps_check_integrity_all(true));
+    flushBootLog();
     Serial.println("[BOOT] Inicializando camera...");
     flushBootLog();
     setupCameraManager();

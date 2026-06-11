@@ -591,7 +591,8 @@ bool initCamera()
                   CAMERA_PIN_D0, CAMERA_PIN_D1, CAMERA_PIN_D2, CAMERA_PIN_D3, CAMERA_PIN_D4, CAMERA_PIN_D5,
                   CAMERA_PIN_D6, CAMERA_PIN_D7, CAMERA_PIN_VSYNC, CAMERA_PIN_HREF, CAMERA_PIN_PCLK);
 
-    camera_config_t config;
+    camera_config_t config = {};
+    config.sccb_i2c_port = -1; // deixa o driver criar/gerenciar a porta I2C do SCCB
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
     config.pin_d0 = CAMERA_PIN_D0;
