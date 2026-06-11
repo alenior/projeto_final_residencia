@@ -43,6 +43,12 @@
 #ifndef PREDATOR_POST_UPLOAD_SETTLE_MS
 #define PREDATOR_POST_UPLOAD_SETTLE_MS 100UL
 #endif
+#ifndef NETWORK_UPLOADS_ENABLED
+#define NETWORK_UPLOADS_ENABLED 0
+#endif
+#ifndef PREDATOR_UPLOAD_ENABLED
+#define PREDATOR_UPLOAD_ENABLED 0
+#endif
 
 namespace
 {
@@ -161,11 +167,13 @@ namespace
 
         ledcWrite(PIN_BUZZER, buzzerDuty);
         buzzerOffAtMs = millis() + buzzerDurationMs;
-        Serial.printf("[PREDADORES][BUZZER] ON motivo=%s freq=%d duty=%d duracao_ms=%lu\n",
+        Serial.printf("[PREDADORES][BUZZER] ON motivo=%s freq=%d duty=%d duracao_ms=%lu upload_global=%d upload_predadores=%d\n",
                       reason,
                       BUZZER_PWM_FREQ_HZ,
                       buzzerDuty,
-                      buzzerDurationMs);
+                      buzzerDurationMs,
+                      NETWORK_UPLOADS_ENABLED,
+                      PREDATOR_UPLOAD_ENABLED);
     }
 
     void stopBuzzerIfDue()
@@ -225,6 +233,11 @@ namespace
     {
         const String payload = buildPredatorPayload(reading);
         sdAppendLogJson("predadores", payload);
+
+#if !NETWORK_UPLOADS_ENABLED || !PREDATOR_UPLOAD_ENABLED
+        Serial.println("[PREDADORES][UPLOAD][WARN] Upload HTTPS desabilitado por NETWORK_UPLOADS_ENABLED=0 ou PREDATOR_UPLOAD_ENABLED=0; alerta local mantido sem POST.");
+        return false;
+#endif
 
         if (strlen(PREDATOR_INGEST_URL) == 0)
         {
@@ -355,7 +368,7 @@ void setupPredatorManager()
     lastReading = readPredatorSensor("boot", false);
     fillPredatorMetadata(&lastReading);
 
-    Serial.printf("[PREDADORES][CFG] pir_gpio=%d buzzer_gpio=%d pwm_freq=%d pwm_bits=%d duty=%d attached=%s check_ms=%lu cooldown_ms=%lu duracao_ms=%lu\n",
+    Serial.printf("[PREDADORES][CFG] pir_gpio=%d buzzer_gpio=%d pwm_freq=%d pwm_bits=%d duty=%d attached=%s check_ms=%lu cooldown_ms=%lu duracao_ms=%lu upload_global=%d upload_predadores=%d\n",
                   PIN_PIR,
                   PIN_BUZZER,
                   BUZZER_PWM_FREQ_HZ,
@@ -364,7 +377,9 @@ void setupPredatorManager()
                   buzzerAttached ? "true" : "false",
                   checkIntervalMs,
                   alertCooldownMs,
-                  buzzerDurationMs);
+                  buzzerDurationMs,
+                  NETWORK_UPLOADS_ENABLED,
+                  PREDATOR_UPLOAD_ENABLED);
 }
 
 void processPredatorMonitoring()

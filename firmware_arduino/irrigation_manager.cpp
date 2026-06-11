@@ -37,6 +37,12 @@
 #ifndef IRRIGATION_POST_UPLOAD_SETTLE_MS
 #define IRRIGATION_POST_UPLOAD_SETTLE_MS 100UL
 #endif
+#ifndef NETWORK_UPLOADS_ENABLED
+#define NETWORK_UPLOADS_ENABLED 0
+#endif
+#ifndef IRRIGATION_UPLOAD_ENABLED
+#define IRRIGATION_UPLOAD_ENABLED 0
+#endif
 
 namespace
 {
@@ -194,6 +200,11 @@ namespace
         const String payload = buildIrrigationPayload(reading);
         sdAppendLogJson("rega", payload);
 
+#if !NETWORK_UPLOADS_ENABLED || !IRRIGATION_UPLOAD_ENABLED
+        Serial.println("[REGA][UPLOAD][WARN] Upload HTTPS desabilitado por NETWORK_UPLOADS_ENABLED=0 ou IRRIGATION_UPLOAD_ENABLED=0; leitura local mantida sem POST.");
+        return false;
+#endif
+
         if (strlen(IRRIGATION_INGEST_URL) == 0)
         {
             Serial.println("[REGA][UPLOAD][WARN] IRRIGATION_INGEST_URL vazio; leitura mantida apenas no SD.");
@@ -337,12 +348,14 @@ namespace
         if (soilDryRaw == soilWetRaw)
             soilWetRaw = soilDryRaw > 0 ? soilDryRaw - 1 : soilDryRaw + 1;
 
-        Serial.printf("[REGA][CFG] min=%.1f%% interval_ms=%lu timeout_ms=%lu dry_raw=%d wet_raw=%d\n",
+        Serial.printf("[REGA][CFG] min=%.1f%% interval_ms=%lu timeout_ms=%lu dry_raw=%d wet_raw=%d upload_global=%d upload_rega=%d\n",
                       minMoisturePercent,
                       readIntervalMs,
                       pumpTimeoutMs,
                       soilDryRaw,
-                      soilWetRaw);
+                      soilWetRaw,
+                      NETWORK_UPLOADS_ENABLED,
+                      IRRIGATION_UPLOAD_ENABLED);
 
         lastReading.pumpReason = "config_updated";
         fillIrrigationMetadata(&lastReading);
@@ -359,14 +372,16 @@ void setupIrrigationManager()
     lastReading.pumpReason = "boot";
     fillIrrigationMetadata(&lastReading);
 
-    Serial.printf("[REGA][CFG] solo_gpio=%d bomba_gpio=%d interval_ms=%lu min=%.1f%% timeout_ms=%lu dry_raw=%d wet_raw=%d\n",
+    Serial.printf("[REGA][CFG] solo_gpio=%d bomba_gpio=%d interval_ms=%lu min=%.1f%% timeout_ms=%lu dry_raw=%d wet_raw=%d upload_global=%d upload_rega=%d\n",
                   PIN_SOLO_ADC,
                   PIN_RELE_BOMBA,
                   readIntervalMs,
                   minMoisturePercent,
                   pumpTimeoutMs,
                   soilDryRaw,
-                  soilWetRaw);
+                  soilWetRaw,
+                  NETWORK_UPLOADS_ENABLED,
+                  IRRIGATION_UPLOAD_ENABLED);
 }
 
 void processIrrigationAutomation()
