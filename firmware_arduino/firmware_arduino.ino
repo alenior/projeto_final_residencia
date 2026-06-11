@@ -260,6 +260,15 @@ void setup()
     flushBootLog();
     setupSdManager();
 #endif
+#if MQTT_BOOT_SAFE_MODE
+    Serial.println("[BOOT] MQTT ignorado por MQTT_BOOT_SAFE_MODE=1.");
+    flushBootLog();
+    setupMqtt(handleCommand);
+#else
+    Serial.println("[BOOT] Inicializando MQTT...");
+    flushBootLog();
+    setupMqtt(handleCommand);
+#endif
     Serial.println("[BOOT] Inicializando clima...");
     flushBootLog();
     setupClimateManager();
@@ -272,15 +281,6 @@ void setup()
     Serial.println("[BOOT] Inicializando rega...");
     flushBootLog();
     setupIrrigationManager();
-#if MQTT_BOOT_SAFE_MODE
-    Serial.println("[BOOT] MQTT ignorado por MQTT_BOOT_SAFE_MODE=1.");
-    flushBootLog();
-    setupMqtt(handleCommand);
-#else
-    Serial.println("[BOOT] Inicializando MQTT...");
-    flushBootLog();
-    setupMqtt(handleCommand);
-#endif
     Serial.println("[BOOT] Setup concluido.");
     flushBootLog();
 }

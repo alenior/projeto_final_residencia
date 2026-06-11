@@ -71,7 +71,7 @@ Comandos esperados:
 
 ## Módulo Predadores
 
-O monitoramento de predadores usa o PIR HC-SR501 em `PIN_PIR` (GPIO42) e um buzzer em `PIN_BUZZER` (GPIO3) com PWM de `BUZZER_PWM_FREQ_HZ` 5 kHz, resolução `BUZZER_PWM_RESOLUTION_BITS` de 10 bits e duty padrão `BUZZER_PWM_DUTY` 512. A cada `PREDATOR_CHECK_INTERVAL_MS` o firmware verifica presença; quando há movimento, aciona o buzzer por `PREDATOR_BUZZER_DURATION_MS`, respeita `PREDATOR_ALERT_COOLDOWN_MS` para evitar spam e envia o histórico para `PREDATOR_INGEST_URL`. O Flutter envia `configurar_predadores`, `silenciar_predadores` e `testar_buzzer` via MQTT/Firestore. Use transistor/driver adequado para buzzer ativo/passivo se a corrente exceder o limite seguro do GPIO.
+O monitoramento de predadores usa o PIR HC-SR501 em `PIN_PIR` (GPIO42) e um buzzer em `PIN_BUZZER` (GPIO3) com PWM de `BUZZER_PWM_FREQ_HZ` 5 kHz, resolução `BUZZER_PWM_RESOLUTION_BITS` de 10 bits, duty padrão `BUZZER_PWM_DUTY` 512 e canal `BUZZER_PWM_CHANNEL` 7 para evitar conflito com a câmera, que usa LEDC channel 0 no XCLK. A cada `PREDATOR_CHECK_INTERVAL_MS` o firmware verifica presença; quando há movimento, aciona o buzzer por `PREDATOR_BUZZER_DURATION_MS`, respeita `PREDATOR_ALERT_COOLDOWN_MS` para evitar spam e envia o histórico para `PREDATOR_INGEST_URL`. O Flutter envia `configurar_predadores`, `silenciar_predadores` e `testar_buzzer` via MQTT/Firestore. Use transistor/driver adequado para buzzer ativo/passivo se a corrente exceder o limite seguro do GPIO.
 
 ## Módulo Rega
 

@@ -28,6 +28,9 @@
 #ifndef BUZZER_PWM_DUTY
 #define BUZZER_PWM_DUTY 512
 #endif
+#ifndef BUZZER_PWM_CHANNEL
+#define BUZZER_PWM_CHANNEL 7
+#endif
 #ifndef PREDATOR_CHECK_INTERVAL_MS
 #define PREDATOR_CHECK_INTERVAL_MS 500UL
 #endif
@@ -360,19 +363,30 @@ void setupPredatorManager()
 
     if (PIN_BUZZER >= 0)
     {
-        buzzerAttached = ledcAttach(PIN_BUZZER, BUZZER_PWM_FREQ_HZ, BUZZER_PWM_RESOLUTION_BITS);
-        ledcWrite(PIN_BUZZER, 0);
+        // A camera esp32-camera usa LEDC_CHANNEL_0/LEDC_TIMER_0 para XCLK.
+        // Usar canal explicito evita que ledcAttach() escolha automaticamente
+        // o mesmo canal e cause PANIC apos a inicializacao da OV5640.
+        buzzerAttached = ledcAttachChannel(PIN_BUZZER, BUZZER_PWM_FREQ_HZ, BUZZER_PWM_RESOLUTION_BITS, BUZZER_PWM_CHANNEL);
+        if (buzzerAttached)
+        {
+            ledcWrite(PIN_BUZZER, 0);
+        }
+        else
+        {
+            Serial.printf("[PREDADORES][BUZZER][WARN] Falha ao anexar PWM gpio=%d canal=%d; PIR continua ativo sem buzzer.\n", PIN_BUZZER, BUZZER_PWM_CHANNEL);
+        }
     }
 
     lastMotionState = readMotion();
     lastReading = readPredatorSensor("boot", false);
     fillPredatorMetadata(&lastReading);
 
-    Serial.printf("[PREDADORES][CFG] pir_gpio=%d buzzer_gpio=%d pwm_freq=%d pwm_bits=%d duty=%d attached=%s check_ms=%lu cooldown_ms=%lu duracao_ms=%lu upload_global=%d upload_predadores=%d\n",
+    Serial.printf("[PREDADORES][CFG] pir_gpio=%d buzzer_gpio=%d pwm_freq=%d pwm_bits=%d pwm_channel=%d duty=%d attached=%s check_ms=%lu cooldown_ms=%lu duracao_ms=%lu upload_global=%d upload_predadores=%d\n",
                   PIN_PIR,
                   PIN_BUZZER,
                   BUZZER_PWM_FREQ_HZ,
                   BUZZER_PWM_RESOLUTION_BITS,
+                  BUZZER_PWM_CHANNEL,
                   buzzerDuty,
                   buzzerAttached ? "true" : "false",
                   checkIntervalMs,
