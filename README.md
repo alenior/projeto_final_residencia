@@ -142,7 +142,7 @@ Para gerar `firebase_options.dart`, entre em `dashboard_estufa_iot/` e execute `
 
 > Se o ESP32-S3 reiniciar com `IllegalInstruction` ao entrar em `[BOOT] Inicializando MQTT...`, mantenha `MQTT_BOOT_SAFE_MODE 1` e `MQTT_CONNECT_ON_BOOT 0` no `firmware_arduino/config.h`. Nessa condição o firmware não chama `PubSubClient.connect()` no boot, permitindo validar sensores/atuadores locais antes de reativar a comunicação MQTT. Para retomar os comandos remotos, teste depois `MQTT_BOOT_SAFE_MODE 0`, confirme broker/porta/credenciais e mantenha `MQTT_USE_PUBSUBCLIENT 1`.
 
-> Se o ESP32-S3 reiniciar logo após mensagens `[...][UPLOAD] Enviando ...`, mantenha `CLIMATE_UPLOAD_ENABLED 0`, `IRRIGATION_UPLOAD_ENABLED 0` e `PREDATOR_UPLOAD_ENABLED 0` no `firmware_arduino/config.h`. Isso preserva as leituras locais, atuadores, PIR e buzzer, mas evita chamadas HTTPS durante o bring-up; reative cada upload separadamente depois que o boot e os módulos locais estiverem estáveis.
+> Se o ESP32-S3 reiniciar logo após mensagens `[...][UPLOAD] Enviando ...`, mantenha `NETWORK_UPLOADS_ENABLED 0` e, por módulo, `CLIMATE_UPLOAD_ENABLED 0`, `IRRIGATION_UPLOAD_ENABLED 0` e `PREDATOR_UPLOAD_ENABLED 0` no `firmware_arduino/config.h`. Isso preserva as leituras locais, atuadores, PIR e buzzer, mas evita chamadas HTTPS durante o bring-up; reative cada upload separadamente depois que o boot e os módulos locais estiverem estáveis. Para a Rega, prefira `IRRIGATION_UPLOAD_USE_HTTPCLIENT false`, pois o envio em TLS raw escreve o JSON em chunks e evita o bloqueio observado em `HTTPClient.POST`.
 
 ### Módulos Clima, Rega e Predadores no Flutter
 

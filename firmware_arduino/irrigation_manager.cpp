@@ -43,6 +43,12 @@
 #ifndef IRRIGATION_UPLOAD_ENABLED
 #define IRRIGATION_UPLOAD_ENABLED 0
 #endif
+#ifndef IRRIGATION_UPLOAD_USE_HTTPCLIENT
+#define IRRIGATION_UPLOAD_USE_HTTPCLIENT false
+#endif
+#ifndef IRRIGATION_UPLOAD_CHUNK_BYTES
+#define IRRIGATION_UPLOAD_CHUNK_BYTES 256UL
+#endif
 
 namespace
 {
@@ -195,6 +201,218 @@ namespace
         return output;
     }
 
+    bool parseIrrigationHttpsUrl(const char *url, String *host, uint16_t *port, String *path)
+    {
+        const String rawUrl(url);
+        const String scheme = "https://";
+        if (!rawUrl.startsWith(scheme))
+        {
+            Serial.printf("[REGA][UPLOAD][ERRO] URL deve iniciar com https://: %s\n", url);
+            return false;
+        }
+
+        String remainder = rawUrl.substring(scheme.length());
+        const int slashIndex = remainder.indexOf('/');
+        String authority = remainder;
+        *path = "/";
+        if (slashIndex >= 0)
+        {
+            authority = remainder.substring(0, slashIndex);
+            *path = remainder.substring(slashIndex);
+        }
+
+        const int colonIndex = authority.lastIndexOf(':');
+        *port = 443;
+        if (colonIndex > 0)
+        {
+            *host = authority.substring(0, colonIndex);
+            *port = static_cast<uint16_t>(authority.substring(colonIndex + 1).toInt());
+            if (*port == 0)
+                *port = 443;
+        }
+        else
+        {
+            *host = authority;
+        }
+
+        if (host->isEmpty())
+        {
+            Serial.println("[REGA][UPLOAD][ERRO] Host HTTPS vazio.");
+            return false;
+        }
+        return true;
+    }
+
+    bool readIrrigationHttpsResponse(WiFiClientSecure *client, int *statusCode, String *responsePreview)
+    {
+        const unsigned long deadlineMs = millis() + IRRIGATION_HTTP_TIMEOUT_MS;
+        *statusCode = -1;
+        responsePreview->remove(0);
+
+        while (client->connected() && !client->available() && static_cast<long>(deadlineMs - millis()) > 0)
+        {
+            irrigationYield();
+        }
+
+        if (!client->available())
+        {
+            Serial.println("[REGA][UPLOAD][ERRO] Timeout aguardando resposta HTTPS.");
+            return false;
+        }
+
+        String statusLine = client->readStringUntil('\n');
+        statusLine.trim();
+        if (statusLine.startsWith("HTTP/"))
+        {
+            const int firstSpace = statusLine.indexOf(' ');
+            if (firstSpace > 0 && statusLine.length() >= firstSpace + 4)
+            {
+                *statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
+            }
+        }
+
+        while (static_cast<long>(deadlineMs - millis()) > 0)
+        {
+            if (!client->available())
+            {
+                if (!client->connected())
+                    break;
+                irrigationYield();
+                continue;
+            }
+            String header = client->readStringUntil('\n');
+            header.trim();
+            if (header.length() == 0)
+                break;
+        }
+
+        while (static_cast<long>(deadlineMs - millis()) > 0 && (client->connected() || client->available()))
+        {
+            while (client->available())
+            {
+                const char c = static_cast<char>(client->read());
+                if (responsePreview->length() < 160)
+                    *responsePreview += c;
+            }
+            if (!client->connected())
+                break;
+            irrigationYield();
+        }
+        responsePreview->trim();
+        return *statusCode >= 0;
+    }
+
+    bool postIrrigationReadingWithRawTls(const IrrigationReading &reading, const String &payload)
+    {
+        (void)reading;
+
+        String host;
+        String path;
+        uint16_t port;
+        if (!parseIrrigationHttpsUrl(IRRIGATION_INGEST_URL, &host, &port, &path))
+            return false;
+
+        WiFiClientSecure client;
+        client.setInsecure();
+        client.setTimeout(1);
+
+        Serial.printf("[REGA][UPLOAD] TLS raw host=%s porta=%u path=%s bytes=%u chunk=%lu heap=%u\n",
+                      host.c_str(),
+                      port,
+                      path.c_str(),
+                      static_cast<unsigned>(payload.length()),
+                      static_cast<unsigned long>(IRRIGATION_UPLOAD_CHUNK_BYTES),
+                      ESP.getFreeHeap());
+
+        if (!client.connect(host.c_str(), port))
+        {
+            Serial.println("[REGA][UPLOAD][ERRO] Falha ao conectar TLS raw.");
+            client.stop();
+            return false;
+        }
+
+        client.print(String("POST ") + path + " HTTP/1.1\r\n");
+        client.print(String("Host: ") + host + "\r\n");
+        client.print("User-Agent: EstufaIoT-ESP32S3/1.0\r\n");
+        client.print("Connection: close\r\n");
+        client.print("Content-Type: application/json\r\n");
+        client.print(String("x-camera-upload-token: ") + IRRIGATION_UPLOAD_TOKEN + "\r\n");
+        client.print(String("x-device-id: ") + DEVICE_ID + "\r\n");
+        client.print(String("x-namespace: ") + MQTT_NAMESPACE + "\r\n");
+        client.print(String("Content-Length: ") + String(payload.length()) + "\r\n\r\n");
+
+        size_t offset = 0;
+        const size_t configuredChunkBytes = static_cast<size_t>(IRRIGATION_UPLOAD_CHUNK_BYTES);
+        const size_t chunkBytes = configuredChunkBytes == 0 ? 1 : configuredChunkBytes;
+        while (offset < payload.length())
+        {
+            const size_t remaining = payload.length() - offset;
+            const size_t toWrite = remaining < chunkBytes ? remaining : chunkBytes;
+            const size_t written = client.write(reinterpret_cast<const uint8_t *>(payload.c_str() + offset), toWrite);
+            if (written == 0)
+            {
+                Serial.println("[REGA][UPLOAD][ERRO] Escrita TLS raw retornou 0 byte.");
+                client.stop();
+                return false;
+            }
+            offset += written;
+            irrigationYield();
+        }
+        client.flush();
+
+        int status = -1;
+        String response;
+        const bool responseRead = readIrrigationHttpsResponse(&client, &status, &response);
+        client.stop();
+        delay(IRRIGATION_POST_UPLOAD_SETTLE_MS);
+        irrigationYield();
+
+        const bool ok = responseRead && status >= 200 && status < 300;
+        Serial.printf("[REGA][UPLOAD] HTTP %d resposta=%s\n", status, response.c_str());
+        return ok;
+    }
+
+    bool postIrrigationReadingWithHttpClient(const IrrigationReading &reading, const String &payload)
+    {
+        WiFiClientSecure client;
+        client.setInsecure();
+
+        HTTPClient http;
+        http.setReuse(false);
+        http.setTimeout(IRRIGATION_HTTP_TIMEOUT_MS);
+        http.useHTTP10(true);
+
+        if (!http.begin(client, IRRIGATION_INGEST_URL))
+        {
+            Serial.println("[REGA][UPLOAD][ERRO] http.begin falhou.");
+            return false;
+        }
+
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("x-camera-upload-token", IRRIGATION_UPLOAD_TOKEN);
+        http.addHeader("x-device-id", DEVICE_ID);
+        http.addHeader("x-namespace", MQTT_NAMESPACE);
+
+        Serial.printf("[REGA][UPLOAD][HTTPCLIENT] POST bytes=%u heap=%u solo=%d umidade=%.1f%% bomba=%s motivo=%s\n",
+                      static_cast<unsigned>(payload.length()),
+                      ESP.getFreeHeap(),
+                      reading.soilRaw,
+                      reading.soilMoisturePercent,
+                      reading.pumpOn ? "ON" : "OFF",
+                      reading.pumpReason);
+
+        const int status = http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(payload.c_str())), payload.length());
+        const String response = http.getString();
+        http.end();
+        client.stop();
+        delay(IRRIGATION_POST_UPLOAD_SETTLE_MS);
+        irrigationYield();
+
+        const bool ok = status >= 200 && status < 300;
+        Serial.printf("[REGA][UPLOAD] HTTP %d resposta=%s\n", status, response.substring(0, 160).c_str());
+        return ok;
+    }
+
     bool postIrrigationReading(const IrrigationReading &reading)
     {
         const String payload = buildIrrigationPayload(reading);
@@ -217,41 +435,16 @@ namespace
             return false;
         }
 
-        WiFiClientSecure client;
-        client.setInsecure();
-
-        HTTPClient http;
-        http.setReuse(false);
-        http.setTimeout(IRRIGATION_HTTP_TIMEOUT_MS);
-        http.useHTTP10(true);
-
-        if (!http.begin(client, IRRIGATION_INGEST_URL))
-        {
-            Serial.println("[REGA][UPLOAD][ERRO] http.begin falhou.");
-            sdQueueFirebaseJson("rega", IRRIGATION_INGEST_URL, IRRIGATION_UPLOAD_TOKEN, payload);
-            return false;
-        }
-
-        http.addHeader("Content-Type", "application/json");
-        http.addHeader("x-camera-upload-token", IRRIGATION_UPLOAD_TOKEN);
-        http.addHeader("x-device-id", DEVICE_ID);
-        http.addHeader("x-namespace", MQTT_NAMESPACE);
-
-        Serial.printf("[REGA][UPLOAD] Enviando leitura: solo=%d umidade=%.1f%% bomba=%s motivo=%s\n",
+        Serial.printf("[REGA][UPLOAD] Enviando leitura: solo=%d umidade=%.1f%% bomba=%s motivo=%s modo=%s\n",
                       reading.soilRaw,
                       reading.soilMoisturePercent,
                       reading.pumpOn ? "ON" : "OFF",
-                      reading.pumpReason);
+                      reading.pumpReason,
+                      IRRIGATION_UPLOAD_USE_HTTPCLIENT ? "HTTPCLIENT" : "TLS_RAW");
 
-        const int status = http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(payload.c_str())), payload.length());
-        const String response = http.getString();
-        http.end();
-        client.stop();
-        delay(IRRIGATION_POST_UPLOAD_SETTLE_MS);
-        irrigationYield();
-
-        const bool ok = status >= 200 && status < 300;
-        Serial.printf("[REGA][UPLOAD] HTTP %d resposta=%s\n", status, response.substring(0, 160).c_str());
+        const bool ok = IRRIGATION_UPLOAD_USE_HTTPCLIENT
+                            ? postIrrigationReadingWithHttpClient(reading, payload)
+                            : postIrrigationReadingWithRawTls(reading, payload);
         if (!ok)
             sdQueueFirebaseJson("rega", IRRIGATION_INGEST_URL, IRRIGATION_UPLOAD_TOKEN, payload);
         return ok;
