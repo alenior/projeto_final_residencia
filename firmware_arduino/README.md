@@ -18,10 +18,10 @@ Este diretório contém a migração do firmware para Arduino/C++ para viabiliza
 
 Instale pelo Library Manager:
 
-- `PubSubClient`
 - `ArduinoJson`
+- `PubSubClient` (opcional; somente para testar o fallback legado com `MQTT_USE_RAW_CLIENT 0`)
 
-Se aparecer `fatal error: PubSubClient.h: No such file or directory`, instale a biblioteca `PubSubClient` pelo Library Manager da Arduino IDE. O firmware também pode compilar sem essa biblioteca quando `MQTT_USE_PUBSUBCLIENT` estiver `0` ou ausente no `config.h`, permitindo validar Wi-Fi/clima/câmera local; nesse modo MQTT, comandos do Flutter e publicações de telemetria ficam desabilitados. Para a integração completa do app, instale `PubSubClient` e defina `#define MQTT_USE_PUBSUBCLIENT 1` no `firmware_arduino/config.h`.
+O firmware usa por padrão `MQTT_USE_RAW_CLIENT 1`, um cliente MQTT 3.1.1 simples sobre `WiFiClient` que evita a chamada a `PubSubClient.connect()` durante o bring-up. Assim, `PubSubClient` é opcional: instale-o apenas se quiser testar o fallback legado definindo `MQTT_USE_RAW_CLIENT 0` e `MQTT_USE_PUBSUBCLIENT 1` no `firmware_arduino/config.h`.
 
 Também é necessário instalar o pacote de placas ESP32 da Espressif na Arduino IDE. A câmera usa `esp_camera.h`, fornecido pelo core ESP32 quando uma placa ESP32 com suporte a câmera é selecionada. Se a IDE compilar com aviso de `esp_camera.h` ausente, o firmware agora desabilita apenas o módulo de câmera para permitir testar Wi-Fi/MQTT/clima; para capturar OV5640, selecione um pacote/placa ESP32-S3 com `esp32-camera` disponível e PSRAM habilitada.
 
@@ -39,7 +39,7 @@ Também é necessário instalar o pacote de placas ESP32 da Espressif na Arduino
    firmware_arduino/config.h
    ```
 
-2. Ajuste Wi-Fi, MQTT, `CAMERA_UPLOAD_URL`, `CLIMATE_INGEST_URL`, `IRRIGATION_INGEST_URL`, `PREDATOR_INGEST_URL` e `CAMERA_UPLOAD_TOKEN`. Para receber comandos do Flutter, instale `PubSubClient` e mantenha `MQTT_USE_PUBSUBCLIENT 1`.
+2. Ajuste Wi-Fi, MQTT, `CAMERA_UPLOAD_URL`, `CLIMATE_INGEST_URL`, `IRRIGATION_INGEST_URL`, `PREDATOR_INGEST_URL` e `CAMERA_UPLOAD_TOKEN`. Para receber comandos do Flutter sem acionar `PubSubClient.connect()`, mantenha `MQTT_USE_RAW_CLIENT 1`.
 3. Substitua todos os `CAMERA_PIN_*` pelo pinout real da sua placa ESP32-S3 + OV5640 e confirme o HDC1080 em SDA=GPIO14/SCL=GPIO21/endereço `0x40`.
 4. Selecione na Arduino IDE uma placa ESP32-S3 com PSRAM habilitada.
 5. Faça upload e acompanhe o Serial Monitor em `115200`.

@@ -89,7 +89,7 @@ Arquivos principais:
 - `firmware_arduino/predator_manager.*` — PIR HC-SR501 em GPIO42, buzzer PWM em GPIO3 a 5 kHz/10 bits, alerta local e histórico em Firestore.
 - `firmware_arduino/actuators.*` — bomba, lâmpada LED, leituras básicas e compatibilidade com atuadores opcionais.
 
-Consulte `firmware_arduino/README.md` antes do upload pela Arduino IDE. Se a compilação indicar `PubSubClient.h: No such file or directory`, instale `PubSubClient` pelo Library Manager e defina `MQTT_USE_PUBSUBCLIENT 1` no `config.h`; sem ela o firmware compila em modo degradado, mas não recebe comandos MQTT do Flutter.
+Consulte `firmware_arduino/README.md` antes do upload pela Arduino IDE. O MQTT agora usa por padrão `MQTT_USE_RAW_CLIENT 1`, sem depender de `PubSubClient.connect()`; instale `PubSubClient` apenas se quiser testar o fallback legado com `MQTT_USE_RAW_CLIENT 0` e `MQTT_USE_PUBSUBCLIENT 1`.
 
 ## Deploy Cloud Functions
 ### Pré-requisitos
@@ -140,7 +140,7 @@ Para gerar `firebase_options.dart`, entre em `dashboard_estufa_iot/` e execute `
 
 
 
-> Se o ESP32-S3 reiniciar com `IllegalInstruction` ou assert de heap ao entrar em `[BOOT] Inicializando MQTT...`, mantenha `MQTT_BOOT_SAFE_MODE 1` e `MQTT_CONNECT_ON_BOOT 0` no `firmware_arduino/config.h`. Nessa condição o firmware não chama `PubSubClient.connect()` no boot, permitindo validar sensores/atuadores locais antes de reativar a comunicação MQTT. Para retomar os comandos remotos, teste depois `MQTT_BOOT_SAFE_MODE 0`, confirme broker/porta/credenciais e mantenha `MQTT_USE_PUBSUBCLIENT 1`. O firmware instancia o `PubSubClient` globalmente e monta tópicos em buffers fixos para reduzir fragmentação da heap no momento da conexão.
+> Se o ESP32-S3 reiniciar com `IllegalInstruction`, `LoadProhibited` ou assert de heap ao entrar em `[BOOT] Inicializando MQTT...`, mantenha `MQTT_BOOT_SAFE_MODE 1` e `MQTT_CONNECT_ON_BOOT 0` no `firmware_arduino/config.h` para validar os sensores locais. Para retomar os comandos remotos, use preferencialmente `MQTT_USE_RAW_CLIENT 1`: o firmware monta pacotes MQTT 3.1.1 diretamente sobre `WiFiClient`, sem chamar `PubSubClient.connect()`, e mantém o `PubSubClient` apenas como fallback quando `MQTT_USE_RAW_CLIENT 0`.
 
 > Se o ESP32-S3 reiniciar logo após mensagens `[...][UPLOAD] Enviando ...`, mantenha `NETWORK_UPLOADS_ENABLED 0` e, por módulo, `CLIMATE_UPLOAD_ENABLED 0`, `IRRIGATION_UPLOAD_ENABLED 0` e `PREDATOR_UPLOAD_ENABLED 0` no `firmware_arduino/config.h`. Isso preserva as leituras locais, atuadores, PIR e buzzer, mas evita chamadas HTTPS durante o bring-up; reative cada upload separadamente depois que o boot e os módulos locais estiverem estáveis. Para a Rega, prefira `IRRIGATION_UPLOAD_USE_HTTPCLIENT false`, pois o envio em TLS raw escreve o JSON em chunks e evita o bloqueio observado em `HTTPClient.POST`.
 
