@@ -21,6 +21,12 @@
 #ifndef SDMMC_FREQUENCY_KHZ
 #define SDMMC_FREQUENCY_KHZ 25000
 #endif
+#ifndef SD_CARD_ENABLED
+#define SD_CARD_ENABLED 0
+#endif
+#ifndef SD_MOUNT_ON_BOOT
+#define SD_MOUNT_ON_BOOT SD_CARD_ENABLED
+#endif
 #ifndef SD_PENDING_SYNC_MAX_PER_CYCLE
 #define SD_PENDING_SYNC_MAX_PER_CYCLE 1
 #endif
@@ -117,7 +123,25 @@ namespace
 
 void setupSdManager()
 {
+#if !SD_CARD_ENABLED
+    sdReady = false;
+    Serial.println("[SD][WARN] SD Card desabilitado por SD_CARD_ENABLED=0; logs locais e fila offline ficam inativos.");
+    return;
+#elif !SD_MOUNT_ON_BOOT
+    sdReady = false;
+    Serial.println("[SD][WARN] Montagem SD no boot desabilitada por SD_MOUNT_ON_BOOT=0; evitando SD_MMC.begin no setup.");
+    return;
+#else
+    Serial.printf("[SD] Inicializando SDMMC 1-bit clk=%d cmd=%d d0=%d freq_khz=%d...\n",
+                  PIN_SD_CLK,
+                  PIN_SD_CMD,
+                  PIN_SD_D0,
+                  SDMMC_FREQUENCY_KHZ);
+    delay(50);
+    yield();
+
     SD_MMC.setPins(PIN_SD_CLK, PIN_SD_CMD, PIN_SD_D0);
+    yield();
     sdReady = SD_MMC.begin("/sdcard", true, false, SDMMC_FREQUENCY_KHZ);
 
     if (!sdReady)
@@ -141,6 +165,7 @@ void setupSdManager()
                   SDMMC_FREQUENCY_KHZ,
                   static_cast<unsigned>(SD_MMC.cardType()),
                   static_cast<unsigned long long>(SD_MMC.cardSize() / (1024ULL * 1024ULL)));
+#endif
 }
 
 bool isSdReady()
