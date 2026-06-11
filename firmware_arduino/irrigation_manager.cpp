@@ -316,13 +316,13 @@ namespace
         client.setInsecure();
         client.setTimeout(1);
 
-        Serial.printf("[REGA][UPLOAD] TLS raw host=%s porta=%u path=%s bytes=%u chunk=%lu heap=%u\n",
+        Serial.printf("[REGA][UPLOAD] TLS raw host=%s porta=%u path=%s bytes=%u chunk=%lu heap=%lu\n",
                       host.c_str(),
                       port,
                       path.c_str(),
                       static_cast<unsigned>(payload.length()),
                       static_cast<unsigned long>(IRRIGATION_UPLOAD_CHUNK_BYTES),
-                      ESP.getFreeHeap());
+                      static_cast<unsigned long>(ESP.getFreeHeap()));
 
         if (!client.connect(host.c_str(), port))
         {
@@ -393,9 +393,9 @@ namespace
         http.addHeader("x-device-id", DEVICE_ID);
         http.addHeader("x-namespace", MQTT_NAMESPACE);
 
-        Serial.printf("[REGA][UPLOAD][HTTPCLIENT] POST bytes=%u heap=%u solo=%d umidade=%.1f%% bomba=%s motivo=%s\n",
+        Serial.printf("[REGA][UPLOAD][HTTPCLIENT] POST bytes=%u heap=%lu solo=%d umidade=%.1f%% bomba=%s motivo=%s\n",
                       static_cast<unsigned>(payload.length()),
-                      ESP.getFreeHeap(),
+                      static_cast<unsigned long>(ESP.getFreeHeap()),
                       reading.soilRaw,
                       reading.soilMoisturePercent,
                       reading.pumpOn ? "ON" : "OFF",

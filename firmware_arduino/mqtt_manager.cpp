@@ -22,6 +22,7 @@
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include <cstring>
+#include <cstdio>
 
 namespace
 {
@@ -35,20 +36,31 @@ namespace
     }
 
 #if ESTUFA_HAS_PUBSUBCLIENT
+    // Instancia global: o buffer interno do PubSubClient e alocado cedo, antes de
+    // camera/SD/HTTPS fragmentarem a heap. Antes era um static local criado no
+    // primeiro connect(), exatamente no ponto em que algumas placas reiniciavam.
+    PubSubClient mqttClient(wifiClient);
+
     PubSubClient &mqttClientRef()
     {
-        static PubSubClient client(wifiClient);
-        return client;
+        return mqttClient;
+    }
+
+    void makeNamespacedTopic(char *output, size_t outputSize, const char *suffix)
+    {
+        snprintf(output, outputSize, "estufa/%s/%s/%s", MQTT_NAMESPACE, DEVICE_ID, suffix);
+        output[outputSize - 1] = '\0';
+    }
+
+    void makeLegacyTopic(char *output, size_t outputSize, const char *suffix)
+    {
+        snprintf(output, outputSize, "estufa/%s/%s", DEVICE_ID, suffix);
+        output[outputSize - 1] = '\0';
     }
 
     String topicTelemetry() { return topicBase() + "/telemetria"; }
     String topicStatus() { return topicBase() + "/status"; }
     String topicCamera() { return topicBase() + "/camera"; }
-    String topicTest() { return topicBase() + "/teste"; }
-    String topicCommandEnglish() { return topicBase() + "/commands"; }
-    String topicLegacyCommand() { return String("estufa/") + DEVICE_ID + "/comandos"; }
-    String topicLegacyCommandEnglish() { return String("estufa/") + DEVICE_ID + "/commands"; }
-    String topicGeneralCommand() { return "estufa/comandos"; }
 
     void onMqttMessage(char *topic, byte *payload, unsigned int length)
     {
@@ -83,49 +95,75 @@ namespace
         if (client.connected())
             return true;
 
+        char telemetryTopic[96];
+        char statusTopic[96];
+        char cameraTopic[96];
+        char testTopic[96];
+        char commandTopic[96];
+        char commandEnglishTopic[96];
+        char legacyCommandTopic[96];
+        char legacyCommandEnglishTopic[96];
+        const char *generalCommandTopic = "estufa/comandos";
+        makeNamespacedTopic(telemetryTopic, sizeof(telemetryTopic), "telemetria");
+        makeNamespacedTopic(statusTopic, sizeof(statusTopic), "status");
+        makeNamespacedTopic(cameraTopic, sizeof(cameraTopic), "camera");
+        makeNamespacedTopic(testTopic, sizeof(testTopic), "teste");
+        makeNamespacedTopic(commandTopic, sizeof(commandTopic), "comandos");
+        makeNamespacedTopic(commandEnglishTopic, sizeof(commandEnglishTopic), "commands");
+        makeLegacyTopic(legacyCommandTopic, sizeof(legacyCommandTopic), "comandos");
+        makeLegacyTopic(legacyCommandEnglishTopic, sizeof(legacyCommandEnglishTopic), "commands");
+
         client.setServer(MQTT_BROKER, MQTT_PORT);
         client.setCallback(onMqttMessage);
         client.setKeepAlive(MQTT_KEEPALIVE_SECONDS);
+        client.setSocketTimeout(3);
 
-        Serial.printf("[MQTT] Conectando em %s:%d...\n", MQTT_BROKER, MQTT_PORT);
+        Serial.printf("[MQTT] Conectando em %s:%d heap=%lu...\n", MQTT_BROKER, MQTT_PORT, static_cast<unsigned long>(ESP.getFreeHeap()));
+        yield();
+        delay(10);
+
         bool connected;
         if (strlen(MQTT_USER) > 0)
         {
-            connected = client.connect(DEVICE_ID, MQTT_USER, MQTT_PASSWORD, topicStatus().c_str(), 0, true, "{\"online\":false}");
+            connected = client.connect(DEVICE_ID, MQTT_USER, MQTT_PASSWORD, statusTopic, 0, true, "{\"online\":false}");
         }
         else
         {
-            connected = client.connect(DEVICE_ID, topicStatus().c_str(), 0, true, "{\"online\":false}");
+            connected = client.connect(DEVICE_ID, statusTopic, 0, true, "{\"online\":false}");
         }
 
         if (!connected)
         {
-            Serial.printf("[MQTT][WARN] Falha na conexao, state=%d\n", client.state());
+            Serial.printf("[MQTT][WARN] Falha na conexao, state=%d heap=%lu\n", client.state(), static_cast<unsigned long>(ESP.getFreeHeap()));
+            client.disconnect();
+            wifiClient.stop();
             return false;
         }
 
-        const String commandTopic = mqttCommandTopic();
-        const String commandEnglishTopic = topicCommandEnglish();
-        const String legacyCommandTopic = topicLegacyCommand();
-        const String legacyCommandEnglishTopic = topicLegacyCommandEnglish();
-        const String generalCommandTopic = topicGeneralCommand();
+        Serial.printf("[MQTT][SUB] %s => %s\n", commandTopic, client.subscribe(commandTopic) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", commandEnglishTopic, client.subscribe(commandEnglishTopic) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandTopic, client.subscribe(legacyCommandTopic) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandEnglishTopic, client.subscribe(legacyCommandEnglishTopic) ? "OK" : "FAIL");
+        Serial.printf("[MQTT][SUB] %s => %s\n", generalCommandTopic, client.subscribe(generalCommandTopic) ? "OK" : "FAIL");
 
-        Serial.printf("[MQTT][SUB] %s => %s\n", commandTopic.c_str(), client.subscribe(commandTopic.c_str()) ? "OK" : "FAIL");
-        Serial.printf("[MQTT][SUB] %s => %s\n", commandEnglishTopic.c_str(), client.subscribe(commandEnglishTopic.c_str()) ? "OK" : "FAIL");
-        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandTopic.c_str(), client.subscribe(legacyCommandTopic.c_str()) ? "OK" : "FAIL");
-        Serial.printf("[MQTT][SUB] %s => %s\n", legacyCommandEnglishTopic.c_str(), client.subscribe(legacyCommandEnglishTopic.c_str()) ? "OK" : "FAIL");
-        Serial.printf("[MQTT][SUB] %s => %s\n", generalCommandTopic.c_str(), client.subscribe(generalCommandTopic.c_str()) ? "OK" : "FAIL");
+        char onlinePayload[192];
+        snprintf(onlinePayload, sizeof(onlinePayload),
+                 "{\"online\":true,\"device_id\":\"%s\",\"namespace\":\"%s\",\"firmware\":\"arduino\",\"ip\":\"%s\",\"uptime_ms\":%lu}",
+                 DEVICE_ID,
+                 MQTT_NAMESPACE,
+                 localIpString().c_str(),
+                 millis());
+        onlinePayload[sizeof(onlinePayload) - 1] = '\0';
+        client.publish(statusTopic, onlinePayload, true);
+        client.publish(testTopic, "{\"evento\":\"boot\",\"firmware\":\"arduino\"}");
 
-        publishStatus(true);
-        client.publish(topicTest().c_str(), "{\"evento\":\"boot\",\"firmware\":\"arduino\"}");
-
-        Serial.printf("[MQTT] pub: %s | %s | %s\n", topicTelemetry().c_str(), topicStatus().c_str(), topicCamera().c_str());
+        Serial.printf("[MQTT] pub: %s | %s | %s\n", telemetryTopic, statusTopic, cameraTopic);
         Serial.printf("[MQTT] sub: %s | %s | %s | %s | %s\n",
-                      mqttCommandTopic().c_str(),
-                      topicCommandEnglish().c_str(),
-                      topicLegacyCommand().c_str(),
-                      topicLegacyCommandEnglish().c_str(),
-                      topicGeneralCommand().c_str());
+                      commandTopic,
+                      commandEnglishTopic,
+                      legacyCommandTopic,
+                      legacyCommandEnglishTopic,
+                      generalCommandTopic);
         return true;
     }
 #endif
@@ -201,7 +239,7 @@ bool publishStatus(bool online)
     doc["ssid"] = WiFi.SSID();
     doc["rssi"] = WiFi.RSSI();
     doc["uptime_ms"] = millis();
-    doc["free_heap"] = ESP.getFreeHeap();
+    doc["free_heap"] = static_cast<unsigned long>(ESP.getFreeHeap());
     doc["psram_free"] = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 
     String payload;
