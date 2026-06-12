@@ -15,6 +15,9 @@
 #ifndef CLIMATE_INGEST_URL
 #define CLIMATE_INGEST_URL ""
 #endif
+#ifndef TLS_UPLOAD_MIN_SPACING_MS
+#define TLS_UPLOAD_MIN_SPACING_MS 3000UL
+#endif
 #ifndef CLIMATE_UPLOAD_TOKEN
 #define CLIMATE_UPLOAD_TOKEN CAMERA_UPLOAD_TOKEN
 #endif
@@ -68,6 +71,12 @@
 #endif
 #ifndef CLIMATE_POST_UPLOAD_SETTLE_MS
 #define CLIMATE_POST_UPLOAD_SETTLE_MS 150UL
+#endif
+#ifndef NETWORK_UPLOADS_ENABLED
+#define NETWORK_UPLOADS_ENABLED 0
+#endif
+#ifndef CLIMATE_UPLOAD_ENABLED
+#define CLIMATE_UPLOAD_ENABLED 0
 #endif
 #ifndef LDR_ADC_MAX_VALUE
 #define LDR_ADC_MAX_VALUE 4095.0f
@@ -498,6 +507,7 @@ namespace
         String response;
         const bool ok = readClimateHttpsResponse(client, &status, &response);
         client.stop();
+        noteTlsUploadFinished();
         delay(CLIMATE_POST_UPLOAD_SETTLE_MS);
 
         Serial.printf("[CLIMA][UPLOAD] HTTP %d resposta=%s\n", status, response.c_str());
@@ -542,6 +552,11 @@ namespace
         const String payload = buildClimatePayload(reading);
         sdAppendLogJson("clima", payload);
 
+#if !NETWORK_UPLOADS_ENABLED || !CLIMATE_UPLOAD_ENABLED
+        Serial.println("[CLIMA][UPLOAD][WARN] Upload HTTPS desabilitado por NETWORK_UPLOADS_ENABLED=0 ou CLIMATE_UPLOAD_ENABLED=0; leitura local mantida sem POST.");
+        return false;
+#endif
+
         if (strlen(CLIMATE_INGEST_URL) == 0)
         {
             Serial.println("[CLIMA][UPLOAD][WARN] CLIMATE_INGEST_URL vazio; leitura mantida apenas no SD.");
@@ -550,6 +565,13 @@ namespace
         if (!isWiFiConnected())
         {
             Serial.println("[CLIMA][UPLOAD][WARN] Wi-Fi indisponivel; leitura mantida no SD.");
+            sdQueueFirebaseJson("clima", CLIMATE_INGEST_URL, CLIMATE_UPLOAD_TOKEN, payload);
+            return false;
+        }
+
+        if (!tlsUploadSpacingElapsed(TLS_UPLOAD_MIN_SPACING_MS))
+        {
+            Serial.println("[CLIMA][UPLOAD][SKIP] Outra sessao TLS recente; adiando para evitar corrupcao de heap.");
             sdQueueFirebaseJson("clima", CLIMATE_INGEST_URL, CLIMATE_UPLOAD_TOKEN, payload);
             return false;
         }
@@ -694,7 +716,7 @@ void setupClimateManager()
     Serial.println("[CLIMA][HDC1080][WARN] Sensor desabilitado por CLIMATE_HDC1080_ENABLED=0 para evitar PANIC no boot; LDR/atuadores permanecem ativos.");
 #endif
 
-    Serial.printf("[CLIMA][CFG] ldr_gpio=%d adc=12bits threshold=%d hysteresis=%d lamp_gpio=%d fan_gpio=%d fan_threshold=%.2fC fan_check_ms=%lu fan_timeout_ms=%lu hdc1080=%s sda=%d scl=%d addr=0x%02x interval_ms=%lu\n",
+    Serial.printf("[CLIMA][CFG] ldr_gpio=%d adc=12bits threshold=%d hysteresis=%d lamp_gpio=%d fan_gpio=%d fan_threshold=%.2fC fan_check_ms=%lu fan_timeout_ms=%lu hdc1080=%s sda=%d scl=%d addr=0x%02x interval_ms=%lu upload_global=%d upload_clima=%d\n",
                   PIN_LDR_ADC,
                   ldrDarkThresholdRaw,
                   ldrLightHysteresisRaw,
@@ -707,7 +729,9 @@ void setupClimateManager()
                   HDC1080_SDA_PIN,
                   HDC1080_SCL_PIN,
                   HDC1080_I2C_ADDRESS,
-                  static_cast<unsigned long>(CLIMATE_INTERVAL_MS));
+                  static_cast<unsigned long>(CLIMATE_INTERVAL_MS),
+                  NETWORK_UPLOADS_ENABLED,
+                  CLIMATE_UPLOAD_ENABLED);
 
     if (hdcOnline)
     {

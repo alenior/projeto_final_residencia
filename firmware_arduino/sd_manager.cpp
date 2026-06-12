@@ -21,6 +21,9 @@
 #ifndef SDMMC_FREQUENCY_KHZ
 #define SDMMC_FREQUENCY_KHZ 25000
 #endif
+#ifndef SD_BOOT_SAFE_MODE
+#define SD_BOOT_SAFE_MODE 1
+#endif
 #ifndef SD_CARD_ENABLED
 #define SD_CARD_ENABLED 0
 #endif
@@ -123,7 +126,11 @@ namespace
 
 void setupSdManager()
 {
-#if !SD_CARD_ENABLED
+#if SD_BOOT_SAFE_MODE
+    sdReady = false;
+    Serial.println("[SD][WARN] SD Card em modo seguro por SD_BOOT_SAFE_MODE=1; SD_MMC.begin nao sera chamado.");
+    return;
+#elif !SD_CARD_ENABLED
     sdReady = false;
     Serial.println("[SD][WARN] SD Card desabilitado por SD_CARD_ENABLED=0; logs locais e fila offline ficam inativos.");
     return;

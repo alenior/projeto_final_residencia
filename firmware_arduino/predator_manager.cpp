@@ -6,7 +6,6 @@
 #include "wifi_manager.h"
 
 #include <ArduinoJson.h>
-#include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <cstring>
 
@@ -28,6 +27,9 @@
 #ifndef BUZZER_PWM_DUTY
 #define BUZZER_PWM_DUTY 512
 #endif
+#ifndef BUZZER_PWM_CHANNEL
+#define BUZZER_PWM_CHANNEL 7
+#endif
 #ifndef PREDATOR_CHECK_INTERVAL_MS
 #define PREDATOR_CHECK_INTERVAL_MS 500UL
 #endif
@@ -42,6 +44,18 @@
 #endif
 #ifndef PREDATOR_POST_UPLOAD_SETTLE_MS
 #define PREDATOR_POST_UPLOAD_SETTLE_MS 100UL
+#endif
+#ifndef PREDATOR_UPLOAD_CHUNK_BYTES
+#define PREDATOR_UPLOAD_CHUNK_BYTES 256UL
+#endif
+#ifndef TLS_UPLOAD_MIN_SPACING_MS
+#define TLS_UPLOAD_MIN_SPACING_MS 3000UL
+#endif
+#ifndef NETWORK_UPLOADS_ENABLED
+#define NETWORK_UPLOADS_ENABLED 0
+#endif
+#ifndef PREDATOR_UPLOAD_ENABLED
+#define PREDATOR_UPLOAD_ENABLED 0
 #endif
 
 namespace
@@ -161,11 +175,13 @@ namespace
 
         ledcWrite(PIN_BUZZER, buzzerDuty);
         buzzerOffAtMs = millis() + buzzerDurationMs;
-        Serial.printf("[PREDADORES][BUZZER] ON motivo=%s freq=%d duty=%d duracao_ms=%lu\n",
+        Serial.printf("[PREDADORES][BUZZER] ON motivo=%s freq=%d duty=%d duracao_ms=%lu upload_global=%d upload_predadores=%d\n",
                       reason,
                       BUZZER_PWM_FREQ_HZ,
                       buzzerDuty,
-                      buzzerDurationMs);
+                      buzzerDurationMs,
+                      NETWORK_UPLOADS_ENABLED,
+                      PREDATOR_UPLOAD_ENABLED);
     }
 
     void stopBuzzerIfDue()
@@ -221,10 +237,116 @@ namespace
         return output;
     }
 
+    bool parsePredatorHttpsUrl(const char *url, String *host, uint16_t *port, String *path)
+    {
+        const String rawUrl(url);
+        const String scheme = "https://";
+        if (!rawUrl.startsWith(scheme))
+        {
+            Serial.printf("[PREDADORES][UPLOAD][ERRO] URL deve iniciar com https://: %s\n", url);
+            return false;
+        }
+
+        String remainder = rawUrl.substring(scheme.length());
+        const int slashIndex = remainder.indexOf('/');
+        String authority = remainder;
+        *path = "/";
+        if (slashIndex >= 0)
+        {
+            authority = remainder.substring(0, slashIndex);
+            *path = remainder.substring(slashIndex);
+        }
+
+        const int colonIndex = authority.lastIndexOf(':');
+        *port = 443;
+        if (colonIndex > 0)
+        {
+            *host = authority.substring(0, colonIndex);
+            *port = static_cast<uint16_t>(authority.substring(colonIndex + 1).toInt());
+            if (*port == 0)
+                *port = 443;
+        }
+        else
+        {
+            *host = authority;
+        }
+
+        if (host->isEmpty())
+        {
+            Serial.println("[PREDADORES][UPLOAD][ERRO] Host HTTPS vazio.");
+            return false;
+        }
+        return true;
+    }
+
+    bool readPredatorHttpsResponse(WiFiClientSecure *client, int *statusCode, String *responsePreview)
+    {
+        const unsigned long deadlineMs = millis() + PREDATOR_HTTP_TIMEOUT_MS;
+        *statusCode = -1;
+        responsePreview->remove(0);
+
+        while (client->connected() && !client->available() && static_cast<long>(deadlineMs - millis()) > 0)
+        {
+            predatorYield();
+        }
+
+        if (!client->available())
+        {
+            Serial.println("[PREDADORES][UPLOAD][ERRO] Timeout aguardando resposta HTTPS.");
+            return false;
+        }
+
+        String statusLine = client->readStringUntil('\n');
+        statusLine.trim();
+        if (statusLine.startsWith("HTTP/"))
+        {
+            const int firstSpace = statusLine.indexOf(' ');
+            if (firstSpace > 0 && statusLine.length() >= firstSpace + 4)
+            {
+                *statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
+            }
+        }
+
+        while (static_cast<long>(deadlineMs - millis()) > 0)
+        {
+            if (!client->available())
+            {
+                if (!client->connected())
+                    break;
+                predatorYield();
+                continue;
+            }
+            String header = client->readStringUntil('\n');
+            header.trim();
+            if (header.length() == 0)
+                break;
+        }
+
+        while (static_cast<long>(deadlineMs - millis()) > 0 && (client->connected() || client->available()))
+        {
+            while (client->available())
+            {
+                const char c = static_cast<char>(client->read());
+                if (responsePreview->length() < 160)
+                    *responsePreview += c;
+            }
+            if (!client->connected())
+                break;
+            predatorYield();
+        }
+        responsePreview->trim();
+        return *statusCode >= 0;
+    }
+
     bool postPredatorReading(const PredatorReading &reading)
     {
         const String payload = buildPredatorPayload(reading);
         sdAppendLogJson("predadores", payload);
+
+#if !NETWORK_UPLOADS_ENABLED || !PREDATOR_UPLOAD_ENABLED
+        Serial.println("[PREDADORES][UPLOAD][WARN] Upload HTTPS desabilitado por NETWORK_UPLOADS_ENABLED=0 ou PREDATOR_UPLOAD_ENABLED=0; alerta local mantido sem POST.");
+        return false;
+#endif
 
         if (strlen(PREDATOR_INGEST_URL) == 0)
         {
@@ -237,41 +359,85 @@ namespace
             sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
             return false;
         }
-
-        WiFiClientSecure client;
-        client.setInsecure();
-
-        HTTPClient http;
-        http.setReuse(false);
-        http.setTimeout(PREDATOR_HTTP_TIMEOUT_MS);
-        http.useHTTP10(true);
-
-        if (!http.begin(client, PREDATOR_INGEST_URL))
+        if (!tlsUploadSpacingElapsed(TLS_UPLOAD_MIN_SPACING_MS))
         {
-            Serial.println("[PREDADORES][UPLOAD][ERRO] http.begin falhou.");
+            Serial.println("[PREDADORES][UPLOAD][SKIP] Outra sessao TLS recente; adiando para evitar corrupcao de heap.");
             sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
             return false;
         }
 
-        http.addHeader("Content-Type", "application/json");
-        http.addHeader("x-camera-upload-token", PREDATOR_UPLOAD_TOKEN);
-        http.addHeader("x-device-id", DEVICE_ID);
-        http.addHeader("x-namespace", MQTT_NAMESPACE);
+        String host;
+        String path;
+        uint16_t port;
+        if (!parsePredatorHttpsUrl(PREDATOR_INGEST_URL, &host, &port, &path))
+        {
+            sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
+            return false;
+        }
 
-        Serial.printf("[PREDADORES][UPLOAD] Enviando evento: movimento=%s alarme=%s motivo=%s\n",
+        WiFiClientSecure client;
+        client.setInsecure();
+        client.setTimeout(1);
+
+        Serial.printf("[PREDADORES][UPLOAD] TLS raw host=%s porta=%u path=%s bytes=%u chunk=%lu heap=%lu movimento=%s alarme=%s motivo=%s\n",
+                      host.c_str(),
+                      port,
+                      path.c_str(),
+                      static_cast<unsigned>(payload.length()),
+                      static_cast<unsigned long>(PREDATOR_UPLOAD_CHUNK_BYTES),
+                      static_cast<unsigned long>(ESP.getFreeHeap()),
                       reading.motionDetected ? "true" : "false",
                       reading.alarmActive ? "true" : "false",
                       reading.reason);
 
-        const int status = http.POST(reinterpret_cast<uint8_t *>(const_cast<char *>(payload.c_str())), payload.length());
-        const String response = http.getString();
-        http.end();
+        if (!client.connect(host.c_str(), port))
+        {
+            Serial.println("[PREDADORES][UPLOAD][ERRO] Falha ao conectar TLS raw.");
+            client.stop();
+            sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
+            return false;
+        }
+
+        client.print(String("POST ") + path + " HTTP/1.1\r\n");
+        client.print(String("Host: ") + host + "\r\n");
+        client.print("User-Agent: EstufaIoT-ESP32S3/1.0\r\n");
+        client.print("Connection: close\r\n");
+        client.print("Content-Type: application/json\r\n");
+        client.print(String("x-camera-upload-token: ") + PREDATOR_UPLOAD_TOKEN + "\r\n");
+        client.print(String("x-device-id: ") + DEVICE_ID + "\r\n");
+        client.print(String("x-namespace: ") + MQTT_NAMESPACE + "\r\n");
+        client.print(String("Content-Length: ") + String(payload.length()) + "\r\n\r\n");
+
+        size_t offset = 0;
+        const size_t configuredChunkBytes = static_cast<size_t>(PREDATOR_UPLOAD_CHUNK_BYTES);
+        const size_t chunkBytes = configuredChunkBytes == 0 ? 1 : configuredChunkBytes;
+        while (offset < payload.length())
+        {
+            const size_t remaining = payload.length() - offset;
+            const size_t toWrite = remaining < chunkBytes ? remaining : chunkBytes;
+            const size_t written = client.write(reinterpret_cast<const uint8_t *>(payload.c_str() + offset), toWrite);
+            if (written == 0)
+            {
+                Serial.println("[PREDADORES][UPLOAD][ERRO] Escrita TLS raw retornou 0 byte.");
+                client.stop();
+                sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
+                return false;
+            }
+            offset += written;
+            predatorYield();
+        }
+        client.flush();
+
+        int status = -1;
+        String response;
+        const bool responseRead = readPredatorHttpsResponse(&client, &status, &response);
         client.stop();
+        noteTlsUploadFinished();
         delay(PREDATOR_POST_UPLOAD_SETTLE_MS);
         predatorYield();
 
-        const bool ok = status >= 200 && status < 300;
-        Serial.printf("[PREDADORES][UPLOAD] HTTP %d resposta=%s\n", status, response.substring(0, 160).c_str());
+        const bool ok = responseRead && status >= 200 && status < 300;
+        Serial.printf("[PREDADORES][UPLOAD] HTTP %d resposta=%s\n", status, response.c_str());
         if (!ok)
             sdQueueFirebaseJson("predadores", PREDATOR_INGEST_URL, PREDATOR_UPLOAD_TOKEN, payload);
         return ok;
@@ -347,24 +513,37 @@ void setupPredatorManager()
 
     if (PIN_BUZZER >= 0)
     {
-        buzzerAttached = ledcAttach(PIN_BUZZER, BUZZER_PWM_FREQ_HZ, BUZZER_PWM_RESOLUTION_BITS);
-        ledcWrite(PIN_BUZZER, 0);
+        // A camera esp32-camera usa LEDC_CHANNEL_0/LEDC_TIMER_0 para XCLK.
+        // Usar canal explicito evita que ledcAttach() escolha automaticamente
+        // o mesmo canal e cause PANIC apos a inicializacao da OV5640.
+        buzzerAttached = ledcAttachChannel(PIN_BUZZER, BUZZER_PWM_FREQ_HZ, BUZZER_PWM_RESOLUTION_BITS, BUZZER_PWM_CHANNEL);
+        if (buzzerAttached)
+        {
+            ledcWrite(PIN_BUZZER, 0);
+        }
+        else
+        {
+            Serial.printf("[PREDADORES][BUZZER][WARN] Falha ao anexar PWM gpio=%d canal=%d; PIR continua ativo sem buzzer.\n", PIN_BUZZER, BUZZER_PWM_CHANNEL);
+        }
     }
 
     lastMotionState = readMotion();
     lastReading = readPredatorSensor("boot", false);
     fillPredatorMetadata(&lastReading);
 
-    Serial.printf("[PREDADORES][CFG] pir_gpio=%d buzzer_gpio=%d pwm_freq=%d pwm_bits=%d duty=%d attached=%s check_ms=%lu cooldown_ms=%lu duracao_ms=%lu\n",
+    Serial.printf("[PREDADORES][CFG] pir_gpio=%d buzzer_gpio=%d pwm_freq=%d pwm_bits=%d pwm_channel=%d duty=%d attached=%s check_ms=%lu cooldown_ms=%lu duracao_ms=%lu upload_global=%d upload_predadores=%d\n",
                   PIN_PIR,
                   PIN_BUZZER,
                   BUZZER_PWM_FREQ_HZ,
                   BUZZER_PWM_RESOLUTION_BITS,
+                  BUZZER_PWM_CHANNEL,
                   buzzerDuty,
                   buzzerAttached ? "true" : "false",
                   checkIntervalMs,
                   alertCooldownMs,
-                  buzzerDurationMs);
+                  buzzerDurationMs,
+                  NETWORK_UPLOADS_ENABLED,
+                  PREDATOR_UPLOAD_ENABLED);
 }
 
 void processPredatorMonitoring()

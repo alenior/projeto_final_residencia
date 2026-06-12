@@ -33,6 +33,15 @@ extern void processPendingCameraUploads();
 #ifndef SD_SYNC_INTERVAL_MS
 #define SD_SYNC_INTERVAL_MS 60000UL
 #endif
+#ifndef SD_BOOT_SAFE_MODE
+#define SD_BOOT_SAFE_MODE 1
+#endif
+#ifndef SD_CARD_ENABLED
+#define SD_CARD_ENABLED 0
+#endif
+#ifndef SD_MOUNT_ON_BOOT
+#define SD_MOUNT_ON_BOOT SD_CARD_ENABLED
+#endif
 #ifndef CAMERA_BUTTON_ACTIVE_LOW
 #define CAMERA_BUTTON_ACTIVE_LOW true
 #endif
@@ -41,6 +50,12 @@ extern void processPendingCameraUploads();
 #endif
 #ifndef CAMERA_BUTTON_COOLDOWN_MS
 #define CAMERA_BUTTON_COOLDOWN_MS 5000UL
+#endif
+#ifndef CAMERA_BOOT_SAFE_MODE
+#define CAMERA_BOOT_SAFE_MODE 1
+#endif
+#ifndef MQTT_BOOT_SAFE_MODE
+#define MQTT_BOOT_SAFE_MODE 1
 #endif
 
 unsigned long lastTelemetryMs = 0;
@@ -224,6 +239,9 @@ void setup()
     Serial.println("======================================================");
     flushBootLog();
 
+    Serial.printf("[HEAP][CHECK] inicio setup integridade=%d\n", heap_caps_check_integrity_all(true));
+    flushBootLog();
+
     Serial.println("[BOOT] Inicializando atuadores...");
     flushBootLog();
     setupActuators();
@@ -231,27 +249,47 @@ void setup()
     Serial.println("[BOOT] Conectando Wi-Fi...");
     flushBootLog();
     setupWiFi();
+    Serial.printf("[HEAP][CHECK] pos-WiFi integridade=%d\n", heap_caps_check_integrity_all(true));
+    flushBootLog();
     Serial.println("[BOOT] Sincronizando horario...");
     flushBootLog();
     setupTimeSync();
+#if SD_BOOT_SAFE_MODE || !SD_CARD_ENABLED || !SD_MOUNT_ON_BOOT
+    Serial.printf("[BOOT] SD Card ignorado: safe_mode=%d enabled=%d mount_on_boot=%d.\n",
+                  SD_BOOT_SAFE_MODE,
+                  SD_CARD_ENABLED,
+                  SD_MOUNT_ON_BOOT);
+    flushBootLog();
+#else
     Serial.println("[BOOT] Inicializando SD Card...");
     flushBootLog();
     setupSdManager();
+#endif
+#if MQTT_BOOT_SAFE_MODE
+    Serial.println("[BOOT] MQTT ignorado por MQTT_BOOT_SAFE_MODE=1.");
+    flushBootLog();
+    setupMqtt(handleCommand);
+#else
+    Serial.println("[BOOT] Inicializando MQTT...");
+    flushBootLog();
+    setupMqtt(handleCommand);
+#endif
+    Serial.printf("[HEAP][CHECK] pos-MQTT integridade=%d\n", heap_caps_check_integrity_all(true));
+    flushBootLog();
     Serial.println("[BOOT] Inicializando clima...");
     flushBootLog();
     setupClimateManager();
+    Serial.printf("[HEAP][CHECK] pos-clima (pre-camera) integridade=%d\n", heap_caps_check_integrity_all(true));
+    flushBootLog();
+    Serial.println("[BOOT] Inicializando camera...");
+    flushBootLog();
+    setupCameraManager();
     Serial.println("[BOOT] Inicializando predadores...");
     flushBootLog();
     setupPredatorManager();
     Serial.println("[BOOT] Inicializando rega...");
     flushBootLog();
     setupIrrigationManager();
-    Serial.println("[BOOT] Inicializando camera...");
-    flushBootLog();
-    setupCameraManager();
-    Serial.println("[BOOT] Inicializando MQTT...");
-    flushBootLog();
-    setupMqtt(handleCommand);
     Serial.println("[BOOT] Setup concluido.");
     flushBootLog();
 }
@@ -271,12 +309,14 @@ void loop()
         publishStatus(true);
     }
 
+#if !SD_BOOT_SAFE_MODE && SD_CARD_ENABLED
     if (millis() - lastSdSyncMs >= SD_SYNC_INTERVAL_MS)
     {
         lastSdSyncMs = millis();
         processPendingSdJsonUploads(SD_PENDING_SYNC_MAX_PER_CYCLE);
         processPendingCameraUploads();
     }
+#endif
 
     if (millis() - lastMqttDebugMs >= 30000UL)
     {
@@ -295,11 +335,13 @@ void loop()
         publishTelemetry(telemetry);
     }
 
+#if !CAMERA_BOOT_SAFE_MODE
     if (isAutoCaptureDue())
     {
         const bool ok = captureAndUpload("automatico");
         publishCaptureResult("captura_automatica", ok, "agenda");
     }
+#endif
 
     delay(10);
 }

@@ -6,6 +6,21 @@
 namespace
 {
     unsigned long lastReconnectAttemptMs = 0;
+    unsigned long lastTlsUploadEndMs = 0;
+    bool tlsUploadEverDone = false;
+}
+
+bool tlsUploadSpacingElapsed(unsigned long minSpacingMs)
+{
+    if (!tlsUploadEverDone)
+        return true;
+    return static_cast<long>(millis() - lastTlsUploadEndMs) >= static_cast<long>(minSpacingMs);
+}
+
+void noteTlsUploadFinished()
+{
+    lastTlsUploadEndMs = millis();
+    tlsUploadEverDone = true;
 }
 
 void setupWiFi()

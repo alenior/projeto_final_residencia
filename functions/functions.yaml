@@ -1,103 +1,152 @@
 {
-  "endpoints":
-    {
-      "health":
-        {
-          "availableMemoryMb": null,
-          "timeoutSeconds": null,
-          "minInstances": null,
-          "maxInstances": null,
-          "ingressSettings": null,
-          "concurrency": null,
-          "serviceAccountEmail": null,
-          "vpc": null,
-          "platform": "gcfv2",
-          "labels": {},
-          "httpsTrigger": { "invoker": ["public"] },
-          "entryPoint": "health",
-        },
-      "ingestMqttEvent":
-        {
-          "availableMemoryMb": null,
-          "timeoutSeconds": null,
-          "minInstances": null,
-          "maxInstances": null,
-          "ingressSettings": null,
-          "concurrency": null,
-          "serviceAccountEmail": null,
-          "vpc": null,
-          "platform": "gcfv2",
-          "labels": {},
-          "httpsTrigger": { "invoker": ["public"] },
-          "entryPoint": "ingestMqttEvent",
-        },
-      "ingestClimateReading":
-        {
-          "timeoutSeconds": 30,
-          "minInstances": null,
-          "maxInstances": null,
-          "ingressSettings": null,
-          "concurrency": null,
-          "serviceAccountEmail": null,
-          "vpc": null,
-          "platform": "gcfv2",
-          "labels": {},
-          "httpsTrigger": { "invoker": ["public"] },
-          "entryPoint": "ingestClimateReading",
-        },
-      "uploadCameraImage":
-        {
-          "timeoutSeconds": 60,
-          "minInstances": null,
-          "maxInstances": null,
-          "ingressSettings": null,
-          "concurrency": null,
-          "serviceAccountEmail": null,
-          "vpc": null,
-          "platform": "gcfv2",
-          "labels": {},
-          "httpsTrigger": { "invoker": ["public"] },
-          "entryPoint": "uploadCameraImage",
-        },
-      "getCameraImage":
-        {
-          "timeoutSeconds": 30,
-          "minInstances": null,
-          "maxInstances": null,
-          "ingressSettings": null,
-          "concurrency": null,
-          "serviceAccountEmail": null,
-          "vpc": null,
-          "platform": "gcfv2",
-          "labels": {},
-          "httpsTrigger": { "invoker": ["public"] },
-          "entryPoint": "getCameraImage",
-        },
-      "dispatchCommandToMqtt":
-        {
-          "availableMemoryMb": null,
-          "timeoutSeconds": null,
-          "minInstances": null,
-          "maxInstances": null,
-          "ingressSettings": null,
-          "concurrency": null,
-          "serviceAccountEmail": null,
-          "vpc": null,
-          "platform": "gcfv2",
-          "labels": {},
-          "eventTrigger":
-            {
-              "eventType": "google.cloud.firestore.document.v1.created",
-              "eventFilters":
-                { "database": "(default)", "namespace": "(default)" },
-              "eventFilterPathPatterns":
-                { "document": "devices/{deviceId}/commands/{commandId}" },
-              "retry": false,
-            },
-          "entryPoint": "dispatchCommandToMqtt",
-        },
+  "endpoints": {
+    "health": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "httpsTrigger": {
+        "invoker": [
+          "public"
+        ]
+      },
+      "entryPoint": "health"
     },
+    "ingestMqttEvent": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "httpsTrigger": {
+        "invoker": [
+          "public"
+        ]
+      },
+      "entryPoint": "ingestMqttEvent"
+    },
+    "ingestClimateReading": {
+      "timeoutSeconds": 30,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "httpsTrigger": {
+        "invoker": [
+          "public"
+        ]
+      },
+      "entryPoint": "ingestClimateReading"
+    },
+    "ingestIrrigationReading": {
+      "timeoutSeconds": 30,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "httpsTrigger": {
+        "invoker": [
+          "public"
+        ]
+      },
+      "entryPoint": "ingestIrrigationReading"
+    },
+    "ingestPredatorAlert": {
+      "timeoutSeconds": 30,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "httpsTrigger": {
+        "invoker": [
+          "public"
+        ]
+      },
+      "entryPoint": "ingestPredatorAlert"
+    },
+    "uploadCameraImage": {
+      "timeoutSeconds": 60,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "httpsTrigger": {
+        "invoker": [
+          "public"
+        ]
+      },
+      "entryPoint": "uploadCameraImage"
+    },
+    "getCameraImage": {
+      "timeoutSeconds": 30,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "httpsTrigger": {
+        "invoker": [
+          "public"
+        ]
+      },
+      "entryPoint": "getCameraImage"
+    },
+    "dispatchCommandToMqtt": {
+      "availableMemoryMb": null,
+      "timeoutSeconds": null,
+      "minInstances": null,
+      "maxInstances": null,
+      "ingressSettings": null,
+      "concurrency": null,
+      "serviceAccountEmail": null,
+      "vpc": null,
+      "platform": "gcfv2",
+      "labels": {},
+      "eventTrigger": {
+        "eventType": "google.cloud.firestore.document.v1.created",
+        "eventFilters": {
+          "database": "(default)",
+          "namespace": "(default)"
+        },
+        "eventFilterPathPatterns": {
+          "document": "devices/{deviceId}/commands/{commandId}"
+        },
+        "retry": false
+      },
+      "entryPoint": "dispatchCommandToMqtt"
+    }
+  },
   "specVersion": "v1alpha1",
   "requiredAPIs": [],
-  "extensions": {},
+  "extensions": {}
 }

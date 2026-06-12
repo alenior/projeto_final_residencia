@@ -18,10 +18,10 @@ Este diretório contém a migração do firmware para Arduino/C++ para viabiliza
 
 Instale pelo Library Manager:
 
-- `PubSubClient`
 - `ArduinoJson`
+- `PubSubClient` (opcional; somente para testar o fallback legado com `MQTT_USE_RAW_CLIENT 0`)
 
-Se aparecer `fatal error: PubSubClient.h: No such file or directory`, instale a biblioteca `PubSubClient` pelo Library Manager da Arduino IDE. O firmware também pode compilar sem essa biblioteca quando `MQTT_USE_PUBSUBCLIENT` estiver `0` ou ausente no `config.h`, permitindo validar Wi-Fi/clima/câmera local; nesse modo MQTT, comandos do Flutter e publicações de telemetria ficam desabilitados. Para a integração completa do app, instale `PubSubClient` e defina `#define MQTT_USE_PUBSUBCLIENT 1` no `firmware_arduino/config.h`.
+O firmware usa por padrão `MQTT_USE_RAW_CLIENT 1`, um cliente MQTT 3.1.1 simples sobre `WiFiClient` que evita a chamada a `PubSubClient.connect()` durante o bring-up. Assim, `PubSubClient` é opcional: instale-o apenas se quiser testar o fallback legado definindo `MQTT_USE_RAW_CLIENT 0` e `MQTT_USE_PUBSUBCLIENT 1` no `firmware_arduino/config.h`.
 
 Também é necessário instalar o pacote de placas ESP32 da Espressif na Arduino IDE. A câmera usa `esp_camera.h`, fornecido pelo core ESP32 quando uma placa ESP32 com suporte a câmera é selecionada. Se a IDE compilar com aviso de `esp_camera.h` ausente, o firmware agora desabilita apenas o módulo de câmera para permitir testar Wi-Fi/MQTT/clima; para capturar OV5640, selecione um pacote/placa ESP32-S3 com `esp32-camera` disponível e PSRAM habilitada.
 
@@ -39,7 +39,7 @@ Também é necessário instalar o pacote de placas ESP32 da Espressif na Arduino
    firmware_arduino/config.h
    ```
 
-2. Ajuste Wi-Fi, MQTT, `CAMERA_UPLOAD_URL`, `CLIMATE_INGEST_URL`, `IRRIGATION_INGEST_URL`, `PREDATOR_INGEST_URL` e `CAMERA_UPLOAD_TOKEN`. Para receber comandos do Flutter, instale `PubSubClient` e mantenha `MQTT_USE_PUBSUBCLIENT 1`.
+2. Ajuste Wi-Fi, MQTT, `CAMERA_UPLOAD_URL`, `CLIMATE_INGEST_URL`, `IRRIGATION_INGEST_URL`, `PREDATOR_INGEST_URL` e `CAMERA_UPLOAD_TOKEN`. Para receber comandos do Flutter sem acionar `PubSubClient.connect()`, mantenha `MQTT_USE_RAW_CLIENT 1`.
 3. Substitua todos os `CAMERA_PIN_*` pelo pinout real da sua placa ESP32-S3 + OV5640 e confirme o HDC1080 em SDA=GPIO14/SCL=GPIO21/endereço `0x40`.
 4. Selecione na Arduino IDE uma placa ESP32-S3 com PSRAM habilitada.
 5. Faça upload e acompanhe o Serial Monitor em `115200`.
@@ -71,7 +71,7 @@ Comandos esperados:
 
 ## Módulo Predadores
 
-O monitoramento de predadores usa o PIR HC-SR501 em `PIN_PIR` (GPIO42) e um buzzer em `PIN_BUZZER` (GPIO3) com PWM de `BUZZER_PWM_FREQ_HZ` 5 kHz, resolução `BUZZER_PWM_RESOLUTION_BITS` de 10 bits e duty padrão `BUZZER_PWM_DUTY` 512. A cada `PREDATOR_CHECK_INTERVAL_MS` o firmware verifica presença; quando há movimento, aciona o buzzer por `PREDATOR_BUZZER_DURATION_MS`, respeita `PREDATOR_ALERT_COOLDOWN_MS` para evitar spam e envia o histórico para `PREDATOR_INGEST_URL`. O Flutter envia `configurar_predadores`, `silenciar_predadores` e `testar_buzzer` via MQTT/Firestore. Use transistor/driver adequado para buzzer ativo/passivo se a corrente exceder o limite seguro do GPIO.
+O monitoramento de predadores usa o PIR HC-SR501 em `PIN_PIR` (GPIO42) e um buzzer em `PIN_BUZZER` (GPIO3) com PWM de `BUZZER_PWM_FREQ_HZ` 5 kHz, resolução `BUZZER_PWM_RESOLUTION_BITS` de 10 bits, duty padrão `BUZZER_PWM_DUTY` 512 e canal `BUZZER_PWM_CHANNEL` 7 para evitar conflito com a câmera, que usa LEDC channel 0 no XCLK. A cada `PREDATOR_CHECK_INTERVAL_MS` o firmware verifica presença; quando há movimento, aciona o buzzer por `PREDATOR_BUZZER_DURATION_MS`, respeita `PREDATOR_ALERT_COOLDOWN_MS` para evitar spam e envia o histórico para `PREDATOR_INGEST_URL`. O Flutter envia `configurar_predadores`, `silenciar_predadores` e `testar_buzzer` via MQTT/Firestore. Use transistor/driver adequado para buzzer ativo/passivo se a corrente exceder o limite seguro do GPIO.
 
 ## Módulo Rega
 
@@ -84,6 +84,19 @@ O LDR é lido em `PIN_LDR_ADC` (GPIO1, ADC de 12 bits, 0-4095). O limiar padrão
 ## Botão local de teste da câmera
 
 O firmware também pode usar um botão momentâneo em `PIN_BOTAO_CAMERA` para validar captura e upload sem depender do Flutter/MQTT. O padrão é GPIO45 com `INPUT_PULLUP`: ligue um lado do botão ao GPIO45 e o outro ao GND. Como GPIO45 é pino de strapping no ESP32-S3, não mantenha o botão pressionado durante boot/reset. Ao pressionar depois do boot, o Serial Monitor deve exibir `[BOTAO_CAMERA] Captura manual local solicitada.` e seguir com `[CAMERA] Captura OK` / `[CAMERA][UPLOAD] HTTP ...`.
+
+
+## Limpeza de arquivos obsoletos da Arduino IDE
+
+A Arduino IDE compila automaticamente todo `.cpp` presente na pasta do sketch. Se sobrar um arquivo antigo com nome digitado errado, como `irrigation_mananger.cpp`, ele será compilado junto com `irrigation_manager.cpp` e o linker emitirá erros de `multiple definition` para `setupIrrigationManager()`, `processIrrigationAutomation()`, `handleIrrigationCommand()` e `appendIrrigationTelemetry()`.
+
+Mantenha apenas `irrigation_manager.cpp` e `irrigation_manager.h`. Se o erro mencionar `irrigation_mananger.cpp.o`, apague o arquivo obsoleto e limpe o cache temporário da IDE. No Windows, a partir da raiz do repositório, você pode executar:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\firmware_arduino\cleanup_stale_files.ps1 -ArduinoSketchCache "C:\Users\alenior\AppData\Local\arduino\sketches\99673989521194DC62E9BC06025A7D2F"
+```
+
+Se a pasta de cache tiver outro identificador, use o caminho exibido no log de compilação da própria IDE Arduino.
 
 ## Observações importantes
 
